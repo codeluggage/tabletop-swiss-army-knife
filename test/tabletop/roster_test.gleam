@@ -3,8 +3,7 @@ import gleam/option.{None, Some}
 import gleam/string
 import simplifile
 import tabletop/roster.{
-  type Roster, type Selection, Bold, NoRoster, NotJson, Regular, Roster,
-  RuleLink, Text, UnexpectedShape,
+  type Roster, type Selection, NoRoster, NotJson, Roster, UnexpectedShape,
 }
 import tabletop/sheet.{Cost}
 
@@ -208,72 +207,6 @@ pub fn every_rule_in_the_file_includes_force_rules_test() {
   assert rule.description
     == "At **teatime** every golem may rest.\nRest mends one rivet."
   assert roster.find_rule(fixture(), "Sugar Rush") == Error(Nil)
-}
-
-// --- Segments ---------------------------------------------------------------
-
-fn segments(text: String) -> List(roster.Segment) {
-  let links =
-    roster.links(["Steam Vent", "Steam Vent Burst", "Glow 2", "Teatime", "Ab\""])
-  roster.segments(text, links)
-}
-
-pub fn the_longest_rule_name_wins_test() {
-  assert segments("Steam Vent Burst also")
-    == [RuleLink("Steam Vent Burst", Regular), Text(" also", Regular)]
-  assert segments("Steam Vent, but louder")
-    == [RuleLink("Steam Vent", Regular), Text(", but louder", Regular)]
-}
-
-pub fn a_hyphen_is_a_boundary_test() {
-  assert segments("Steam Vent-Fused 3+, Glow 2")
-    == [
-      RuleLink("Steam Vent", Regular),
-      Text("-Fused 3+, ", Regular),
-      RuleLink("Glow 2", Regular),
-    ]
-}
-
-pub fn a_name_needs_a_boundary_on_both_sides_test() {
-  assert segments("Steam Ventilator") == [Text("Steam Ventilator", Regular)]
-  assert segments("XSteam Vent") == [Text("XSteam Vent", Regular)]
-  assert segments("Glow 23") == [Text("Glow 23", Regular)]
-  assert segments("(Glow 2)")
-    == [Text("(", Regular), RuleLink("Glow 2", Regular), Text(")", Regular)]
-}
-
-pub fn a_name_may_end_in_a_quote_mark_test() {
-  assert segments("use Ab\" now")
-    == [Text("use ", Regular), RuleLink("Ab\"", Regular), Text(" now", Regular)]
-  assert segments("Ab\"c") == [Text("Ab\"c", Regular)]
-}
-
-pub fn names_match_case_test() {
-  assert segments("at teatime, steam vent")
-    == [
-      Text("at teatime, steam vent", Regular),
-    ]
-}
-
-pub fn bold_comes_from_double_stars_test() {
-  assert segments("a **b** c")
-    == [Text("a ", Regular), Text("b", Bold), Text(" c", Regular)]
-  assert segments("a ** b") == [Text("a ** b", Regular)]
-}
-
-pub fn a_name_in_bold_is_a_bold_link_test() {
-  assert segments("**Steam Vent Burst** also spills.\nTeatime")
-    == [
-      RuleLink("Steam Vent Burst", Bold),
-      Text(" also spills.\n", Regular),
-      RuleLink("Teatime", Regular),
-    ]
-}
-
-pub fn text_with_no_rule_name_is_one_segment_test() {
-  assert segments("plain words\nnew line")
-    == [Text("plain words\nnew line", Regular)]
-  assert segments("") == []
 }
 
 // --- The real files in local-data/, on this machine only --------------------

@@ -24,6 +24,7 @@ import tabletop/roster.{type Roster, type Selection}
 import tabletop/route.{type Route}
 import tabletop/sheet
 import tabletop/storage.{type Database, type Persistence, type StorageError}
+import tabletop/text
 import tabletop/version
 
 pub fn main() -> Nil {
@@ -781,31 +782,32 @@ fn rule_page(
   }
 }
 
-fn rule_links(decoded: Roster) -> roster.Links {
+/// Every rule in the list a name can link to, the rule name as the target.
+fn rule_links(decoded: Roster) -> text.Links(String) {
   roster.all_rules(decoded)
-  |> list.map(fn(rule) { rule.name })
-  |> roster.links
+  |> list.map(fn(rule) { #(rule.name, rule.name) })
+  |> text.links
 }
 
 /// Text with `**bold**` shown bold and rule names as links to the rule.
 fn rich_text(
   list_id: String,
-  links: roster.Links,
-  text: String,
+  links: text.Links(String),
+  content: String,
 ) -> List(Element(Msg)) {
-  use segment <- list.map(roster.segments(text, links))
+  use segment <- list.map(text.segments(content, links))
   case segment {
-    roster.Text(text:, weight: roster.Regular) -> html.text(text)
-    roster.Text(text:, weight: roster.Bold) ->
-      html.strong([], [html.text(text)])
-    roster.RuleLink(name:, weight:) -> {
+    text.Text(text: run, weight: text.Regular) -> html.text(run)
+    text.Text(text: run, weight: text.Bold) -> html.strong([], [html.text(run)])
+    text.Link(name:, target:, weight:) -> {
       let link =
-        html.a([attribute.href(route.to_hash(route.RulePage(list_id, name)))], [
-          html.text(name),
-        ])
+        html.a(
+          [attribute.href(route.to_hash(route.RulePage(list_id, target)))],
+          [html.text(name)],
+        )
       case weight {
-        roster.Regular -> link
-        roster.Bold -> html.strong([], [link])
+        text.Regular -> link
+        text.Bold -> html.strong([], [link])
       }
     }
   }
