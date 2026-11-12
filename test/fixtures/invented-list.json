@@ -1,0 +1,247 @@
+{
+  "roster": {
+    "name": "Sunday Picnic",
+    "costs": [{ "name": "acorns", "value": 120 }],
+    "forces": [
+      {
+        "name": "Picnic Host",
+        "catalogueName": "Teapot Golems",
+        "rules": [
+          {
+            "name": "Teatime",
+            "description": "At **teatime** every golem may rest.\nRest mends one rivet.",
+            "hidden": false
+          }
+        ],
+        "selections": [
+          {
+            "id": "s-weather",
+            "name": "Weather",
+            "type": "upgrade",
+            "number": 1,
+            "costs": [{ "name": "favour", "value": 3 }],
+            "selections": [
+              {
+                "id": "s-drizzle",
+                "name": "Drizzle",
+                "type": "upgrade",
+                "number": 1,
+                "costs": [{ "name": "acorns", "value": 0 }]
+              }
+            ]
+          },
+          {
+            "id": "u-captain",
+            "name": "Kettle Captain",
+            "type": "model",
+            "number": 1,
+            "costs": [{ "name": "acorns", "value": 40 }],
+            "categories": [
+              { "name": "Leader", "primary": true },
+              { "name": "Kettle", "primary": false }
+            ],
+            "profiles": [
+              {
+                "name": "Kettle Captain",
+                "typeName": "Golem",
+                "hidden": false,
+                "characteristics": [
+                  { "name": "Stride", "$text": "5\"" },
+                  { "name": "Grip", "$text": "3+" },
+                  { "name": "Steam", "$text": "4" },
+                  { "name": "Rivets", "$text": "6" }
+                ]
+              },
+              {
+                "name": "Whistle",
+                "typeName": "Quirk",
+                "hidden": false,
+                "characteristics": [
+                  {
+                    "name": "Note",
+                    "$text": "When the kettle whistles, allies with **Steam Vent** gain Glow 2.\nOnce per game."
+                  }
+                ]
+              }
+            ],
+            "rules": [
+              {
+                "name": "Steam Vent",
+                "description": "Puff once.\nThen **puff again**.",
+                "hidden": false
+              }
+            ],
+            "selections": [
+              {
+                "id": "u-captain-ladle",
+                "name": "Ladle",
+                "type": "upgrade",
+                "number": 1,
+                "costs": [{ "name": "acorns", "value": 5 }],
+                "profiles": [
+                  {
+                    "name": "Ladle",
+                    "typeName": "Gadget",
+                    "hidden": false,
+                    "characteristics": [
+                      { "name": "Reach", "$text": "1\"" },
+                      { "name": "Sparks", "$text": "2" },
+                      { "name": "Traits", "$text": "Steam Vent-Fused 3+, Glow 2" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "u-squad",
+            "name": "Teacup Squad",
+            "type": "unit",
+            "number": 1,
+            "costs": [{ "name": "acorns", "value": 10 }],
+            "categories": [
+              { "name": "Golem", "primary": false },
+              { "name": "Line", "primary": true }
+            ],
+            "selections": [
+              {
+                "id": "u-squad-cups",
+                "name": "Teacup",
+                "type": "model",
+                "number": 3,
+                "costs": [{ "name": "acorns", "value": 15 }],
+                "profiles": [
+                  {
+                    "name": "Teacup",
+                    "typeName": "Golem",
+                    "hidden": false,
+                    "characteristics": [
+                      { "name": "Stride", "$text": "6\"" },
+                      { "name": "Grip", "$text": "4+" },
+                      { "name": "Steam", "$text": "2" },
+                      { "name": "Rivets", "$text": null }
+                    ]
+                  }
+                ],
+                "selections": [
+                  {
+                    "id": "u-squad-cups-sling",
+                    "name": "Saucer Sling",
+                    "type": "upgrade",
+                    "number": 3,
+                    "profiles": [
+                      {
+                        "name": "Saucer Sling",
+                        "typeName": "Gadget",
+                        "hidden": false,
+                        "characteristics": [
+                          { "name": "Reach", "$text": "12\"" },
+                          { "name": "Sparks", "$text": "1" },
+                          { "name": "Traits", "$text": "Glow 2" }
+                        ]
+                      }
+                    ],
+                    "rules": [
+                      {
+                        "name": "Glow 2",
+                        "description": "Shines a little.",
+                        "hidden": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "u-squad-sergeant",
+                "name": "Teacup Sergeant",
+                "type": "model",
+                "number": 1,
+                "costs": [{ "name": "acorns", "value": 20 }],
+                "profiles": [
+                  {
+                    "name": "Teacup Sergeant",
+                    "typeName": "Golem",
+                    "hidden": false,
+                    "characteristics": [
+                      { "name": "Stride", "$text": "6\"" },
+                      { "name": "Grip", "$text": "3+" },
+                      { "name": "Rivets" }
+                    ]
+                  },
+                  {
+                    "name": "Secret Recipe",
+                    "typeName": "Quirk",
+                    "hidden": true,
+                    "characteristics": [
+                      { "name": "Note", "$text": "Not for the table." }
+                    ]
+                  }
+                ],
+                "selections": [
+                  {
+                    "id": "u-squad-sergeant-sling",
+                    "name": "Saucer Sling",
+                    "type": "upgrade",
+                    "number": 1,
+                    "profiles": [
+                      {
+                        "name": "Saucer Sling",
+                        "typeName": "Gadget",
+                        "hidden": false,
+                        "characteristics": [
+                          { "name": "Reach", "$text": "12\"" },
+                          { "name": "Sparks", "$text": "1" },
+                          { "name": "Traits", "$text": "Glow 2" }
+                        ]
+                      }
+                    ],
+                    "rules": [
+                      {
+                        "name": "Glow 2",
+                        "description": "Shines a little.",
+                        "hidden": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "u-walker",
+            "name": "Sugar Bowl Walker",
+            "type": "model",
+            "number": 1,
+            "costs": [{ "name": "acorns", "value": 30 }],
+            "categories": [{ "name": "Golem", "primary": false }],
+            "profiles": [
+              {
+                "name": "Sugar Bowl Walker",
+                "typeName": "Golem",
+                "hidden": false,
+                "characteristics": [
+                  { "name": "Stride", "$text": "4\"" },
+                  { "name": "Grip", "$text": "5+" },
+                  { "name": "Steam", "$text": "8" },
+                  { "name": "Rivets", "$text": "12" }
+                ]
+              }
+            ],
+            "rules": [
+              {
+                "name": "Steam Vent Burst",
+                "description": "Works like Steam Vent, but louder.\n**Steam Vent Burst** also spills sugar.",
+                "hidden": false
+              },
+              {
+                "name": "Sugar Rush",
+                "description": "Hidden from the table.",
+                "hidden": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
