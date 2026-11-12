@@ -148,3 +148,38 @@ A test enforces the file half of this rule: `gleam test` fails when a data file 
 ### Shipping
 
 A push to `main` runs the type check, the tests and the build, and publishes the site. A red run publishes nothing. After a push, watch the run and report the result.
+
+### Commands
+
+The same commands on Windows, macOS and Linux, with only Git, Gleam and Node installed:
+
+| Command | Does |
+|---|---|
+| `gleam check` | type check |
+| `gleam test` | the tests, the content rule test included |
+| `gleam run -m tabletop/build` | compile, then write the site to `dist/` |
+| `gleam run -m tabletop/serve [port]` | serve `dist/` on localhost, port 8080 unless given |
+| `gleam format src test dev` | format |
+
+The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026-11-12.204107.abc1234`, into `index.html`, `version.json` and the service worker's cache name. It copies only the compiled modules the app imports, found by following imports from `tabletop/tabletop.mjs`, and lists them for the service worker to keep offline.
+
+### Layout
+
+- `src/tabletop.gleam` - the app: model, update, the home screen view.
+- `src/tabletop/storage.gleam` + `storage_ffi.mjs` - IndexedDB behind promises of `Result`, and the persistent storage request.
+- `src/tabletop/browser.gleam` + `browser_ffi.mjs` - page-level browser calls: the stamped version, `version.json`, the service worker, tab visibility, the clock.
+- `src/tabletop/version.gleam` - the build version: parse, compare, `version.json`.
+- `web/` - the static shell: `index.html`, `manifest.webmanifest`, `sw.js`, `style.css`, `icons/`. `__VERSION__` and `__FILES__` are placeholders the build replaces.
+- `dev/tabletop/build.gleam`, `serve.gleam` + `node_ffi.mjs` - the build and serve commands, run on Node.
+- `test/` - gleeunit tests, one file per module, plus `content_rule_test.gleam`. Test data goes in `test/fixtures/`.
+- `dist/` - build output, ignored by git.
+
+### Adding a store
+
+The schema lives in `src/tabletop/storage.gleam`. Each step in `upgrades` moves a database up one schema version, and the schema version is the number of steps. A browser holding an older database runs every step it has not run yet, so data saved by an older version still opens.
+
+1. Add a variant to `Store` and give it a name in `store_name`.
+2. Append one step to `upgrades` that lists the new store: `[[Meta], [Lists]]`.
+3. Run `gleam test`, then update the schema test in `test/tabletop/storage_test.gleam` to the new version.
+
+Never edit or reorder a step that has shipped. A browser that already ran it will not run it again.
