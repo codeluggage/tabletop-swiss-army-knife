@@ -1,30 +1,31 @@
 //// A list file that a list-building app exported: its shape, a decoder from
-//// the file's text, and the pure functions the screens use.
+//// the file's text, and the pure functions the list screens use. The shapes a
+//// datasheet shows are in `tabletop/sheet`.
 ////
 //// The code knows the shape only. Every name, cost name, column and rule on
 //// screen comes from the file.
 
 import gleam/dict.{type Dict}
 import gleam/dynamic/decode
-import gleam/float
 import gleam/int
 import gleam/json
 import gleam/list
 import gleam/option.{type Option}
 import gleam/result
 import gleam/string
+import tabletop/sheet.{
+  type Category, type Cost, type EntryKind, type Profile, type Rule, Cost,
+}
 
 pub type Roster {
   Roster(name: String, costs: List(Cost), forces: List(Force))
 }
 
-pub type Cost {
-  Cost(name: String, value: Float)
-}
-
 pub type Force {
   Force(
     name: String,
+    /// Empty when the file has none.
+    catalogue_id: String,
     catalogue_name: String,
     rules: List(Rule),
     selections: List(Selection),
@@ -36,8 +37,11 @@ pub type Force {
 pub type Selection {
   Selection(
     id: String,
+    /// The ids of the entries this selection was made from, empty when the
+    /// file has none.
+    entry_ids: List(String),
     name: String,
-    kind: String,
+    kind: EntryKind,
     number: Int,
     costs: List(Cost),
     categories: List(Category),
@@ -45,28 +49,6 @@ pub type Selection {
     rules: List(Rule),
     selections: List(Selection),
   )
-}
-
-pub type Category {
-  Category(name: String, primary: Bool)
-}
-
-pub type Profile {
-  Profile(
-    name: String,
-    type_name: String,
-    hidden: Bool,
-    characteristics: List(Characteristic),
-  )
-}
-
-/// `text` is empty when the file has no value.
-pub type Characteristic {
-  Characteristic(name: String, text: String)
-}
-
-pub type Rule {
-  Rule(name: String, description: String, hidden: Bool)
 }
 
 pub type FileError {
@@ -97,7 +79,11 @@ pub fn decode(text: String) -> Result(Roster, FileError) {
 
 fn roster_decoder() -> decode.Decoder(Roster) {
   use name <- decode.optional_field("name", "", decode.string)
-  use costs <- decode.optional_field("costs", [], decode.list(cost_decoder()))
+  use costs <- decode.optional_field(
+    "costs",
+    [],
+    decode.list(sheet.cost_decoder()),
+  )
   use forces <- decode.optional_field(
     "forces",
     [],
@@ -106,50 +92,67 @@ fn roster_decoder() -> decode.Decoder(Roster) {
   decode.success(Roster(name:, costs:, forces:))
 }
 
-fn cost_decoder() -> decode.Decoder(Cost) {
-  use name <- decode.optional_field("name", "", decode.string)
-  use value <- decode.optional_field("value", 0.0, number())
-  decode.success(Cost(name:, value:))
-}
-
-/// An int or a float, as a float.
-fn number() -> decode.Decoder(Float) {
-  decode.one_of(decode.float, [decode.int |> decode.map(int.to_float)])
-}
-
 fn force_decoder() -> decode.Decoder(Force) {
   use name <- decode.optional_field("name", "", decode.string)
+  use catalogue_id <- decode.optional_field("catalogueId", "", decode.string)
   use catalogue_name <- decode.optional_field(
     "catalogueName",
     "",
     decode.string,
   )
-  use rules <- decode.optional_field("rules", [], decode.list(rule_decoder()))
+  use rules <- decode.optional_field(
+    "rules",
+    [],
+    decode.list(sheet.rule_decoder()),
+  )
   use selections <- decode.optional_field(
     "selections",
     [],
     decode.list(selection_decoder()),
   )
-  decode.success(Force(name:, catalogue_name:, rules:, selections:))
+  decode.success(Force(
+    name:,
+    catalogue_id:,
+    catalogue_name:,
+    rules:,
+    selections:,
+  ))
 }
 
 fn selection_decoder() -> decode.Decoder(Selection) {
   use id <- decode.field("id", decode.string)
+  use entry_ids <- decode.optional_field(
+    "entryId",
+    [],
+    decode.string |> decode.map(split_ids),
+  )
   use name <- decode.field("name", decode.string)
-  use kind <- decode.optional_field("type", "", decode.string)
+  use kind <- decode.optional_field(
+    "type",
+    sheet.OtherKind(""),
+    sheet.entry_kind_decoder(),
+  )
   use number <- decode.optional_field("number", 1, decode.int)
-  use costs <- decode.optional_field("costs", [], decode.list(cost_decoder()))
+  use costs <- decode.optional_field(
+    "costs",
+    [],
+    decode.list(sheet.cost_decoder()),
+  )
   use categories <- decode.optional_field(
     "categories",
     [],
-    decode.list(category_decoder()),
+    decode.list(sheet.category_decoder("entryId")),
   )
   use profiles <- decode.optional_field(
     "profiles",
     [],
-    decode.list(profile_decoder()),
+    decode.list(sheet.profile_decoder()),
   )
-  use rules <- decode.optional_field("rules", [], decode.list(rule_decoder()))
+  use rules <- decode.optional_field(
+    "rules",
+    [],
+    decode.list(sheet.rule_decoder()),
+  )
   use selections <- decode.optional_field(
     "selections",
     [],
@@ -157,6 +160,7 @@ fn selection_decoder() -> decode.Decoder(Selection) {
   )
   decode.success(Selection(
     id:,
+    entry_ids:,
     name:,
     kind:,
     number:,
@@ -168,52 +172,29 @@ fn selection_decoder() -> decode.Decoder(Selection) {
   ))
 }
 
-fn category_decoder() -> decode.Decoder(Category) {
-  use name <- decode.optional_field("name", "", decode.string)
-  use primary <- decode.optional_field("primary", False, decode.bool)
-  decode.success(Category(name:, primary:))
-}
-
-fn profile_decoder() -> decode.Decoder(Profile) {
-  use name <- decode.optional_field("name", "", decode.string)
-  use type_name <- decode.optional_field("typeName", "", decode.string)
-  use hidden <- decode.optional_field("hidden", False, decode.bool)
-  use characteristics <- decode.optional_field(
-    "characteristics",
-    [],
-    decode.list(characteristic_decoder()),
-  )
-  decode.success(Profile(name:, type_name:, hidden:, characteristics:))
-}
-
-fn characteristic_decoder() -> decode.Decoder(Characteristic) {
-  use name <- decode.optional_field("name", "", decode.string)
-  use text <- decode.optional_field(
-    "$text",
-    "",
-    decode.optional(decode.string) |> decode.map(option.unwrap(_, "")),
-  )
-  decode.success(Characteristic(name:, text:))
-}
-
-fn rule_decoder() -> decode.Decoder(Rule) {
-  use name <- decode.optional_field("name", "", decode.string)
-  use description <- decode.optional_field("description", "", decode.string)
-  use hidden <- decode.optional_field("hidden", False, decode.bool)
-  decode.success(Rule(name:, description:, hidden:))
+/// The file joins a selection's entry ids with `::`.
+fn split_ids(joined: String) -> List(String) {
+  string.split(joined, "::") |> list.filter(fn(id) { id != "" })
 }
 
 // --- Units, settings and costs --------------------------------------------
 
 /// The force's top-level selections that are not settings.
 pub fn units(force: Force) -> List(Selection) {
-  list.filter(force.selections, fn(selection) { selection.kind != "upgrade" })
+  list.filter(force.selections, fn(selection) { !is_setting(selection) })
 }
 
-/// The force's top-level `upgrade` selections. Each child's name is a value
+/// The force's top-level upgrade selections. Each child's name is a value
 /// chosen for the setting.
 pub fn settings(force: Force) -> List(Selection) {
-  list.filter(force.selections, fn(selection) { selection.kind == "upgrade" })
+  list.filter(force.selections, is_setting)
+}
+
+fn is_setting(selection: Selection) -> Bool {
+  case selection.kind {
+    sheet.Upgrade -> True
+    sheet.Unit | sheet.Model | sheet.OtherKind(_) -> False
+  }
 }
 
 pub fn find_unit(roster: Roster, id: String) -> Result(Selection, Nil) {
@@ -244,6 +225,7 @@ pub fn totals(roster: Roster) -> List(Cost) {
   }
 }
 
+/// Each sum keeps the type id of the first cost with its name.
 fn sum_costs(selections: List(Selection)) -> List(Cost) {
   let costs =
     selections
@@ -252,30 +234,17 @@ fn sum_costs(selections: List(Selection)) -> List(Cost) {
   costs
   |> list.map(fn(cost) { cost.name })
   |> list.unique
-  |> list.map(fn(name) {
+  |> list.filter_map(fn(name) {
+    list.find(costs, fn(cost) { cost.name == name })
+  })
+  |> list.map(fn(first) {
     let value =
       costs
-      |> list.filter(fn(cost) { cost.name == name })
+      |> list.filter(fn(cost) { cost.name == first.name })
       |> list.fold(0.0, fn(sum, cost) { sum +. cost.value })
-    Cost(name:, value:)
+    Cost(..first, value:)
   })
   |> list.filter(fn(cost) { cost.value != 0.0 })
-}
-
-/// A whole number without a decimal point, anything else to two places at most.
-pub fn format_value(value: Float) -> String {
-  let rounded = float.to_precision(value, 2)
-  case rounded == float.floor(rounded) {
-    True -> int.to_string(float.truncate(rounded))
-    False -> float.to_string(rounded)
-  }
-}
-
-/// Each cost as its value then its name, such as `12 abc, 3 xyz`.
-pub fn format_costs(costs: List(Cost)) -> String {
-  costs
-  |> list.map(fn(cost) { format_value(cost.value) <> " " <> cost.name })
-  |> string.join(", ")
 }
 
 /// The first category marked primary.
@@ -311,107 +280,20 @@ pub fn by_primary_category(
   })
 }
 
-// --- Profiles ---------------------------------------------------------------
+// --- Profiles and rules -----------------------------------------------------
 
-/// The profiles of one type on a unit, ready to show.
-pub type ProfileGroup {
-  /// Every profile of the type has exactly one characteristic: each item is
-  /// the profile name and that characteristic's text.
-  TextList(type_name: String, items: List(#(String, String)))
-  /// One column per characteristic name, in first-seen order, leaving out a
-  /// column with no value in any row and a column with long text. Each row's
-  /// cells line up with the columns, empty where the profile has no value.
-  Table(type_name: String, columns: List(String), rows: List(Row))
+/// The profiles of the unit and everything inside it, the unit's first.
+pub fn unit_profiles(unit: Selection) -> List(Profile) {
+  with_descendants(unit)
+  |> list.flat_map(fn(selection) { selection.profiles })
 }
-
-/// `notes` holds the row's text in the long columns, as column name and text,
-/// leaving out empty ones. The view shows them under the name, so a phone
-/// screen fits the short columns without scrolling sideways.
-pub type Row {
-  Row(name: String, cells: List(String), notes: List(#(String, String)))
-}
-
-/// A column is long when any of its values holds a space (words, not a
-/// number) or is longer than this many characters.
-const long_text = 8
-
-/// The visible profiles of the unit and everything inside it, grouped by type
-/// in first-seen order. A profile identical to one already in its group
-/// appears once.
-pub fn profile_groups(unit: Selection) -> List(ProfileGroup) {
-  let profiles =
-    with_descendants(unit)
-    |> list.flat_map(fn(selection) { selection.profiles })
-    |> list.filter(fn(profile) { !profile.hidden })
-    |> list.unique
-  profiles
-  |> list.map(fn(profile) { profile.type_name })
-  |> list.unique
-  |> list.map(fn(type_name) {
-    list.filter(profiles, fn(profile) { profile.type_name == type_name })
-    |> group(type_name, _)
-  })
-}
-
-fn group(type_name: String, profiles: List(Profile)) -> ProfileGroup {
-  let single =
-    list.all(profiles, fn(profile) { list.length(profile.characteristics) == 1 })
-  case single {
-    True ->
-      TextList(
-        type_name:,
-        items: list.flat_map(profiles, fn(profile) {
-          list.map(profile.characteristics, fn(characteristic) {
-            #(profile.name, characteristic.text)
-          })
-        }),
-      )
-    False -> {
-      let in_any_row = fn(column, check) {
-        list.any(profiles, fn(profile) { check(value(profile, column)) })
-      }
-      let #(long, columns) =
-        profiles
-        |> list.flat_map(fn(profile) { profile.characteristics })
-        |> list.map(fn(characteristic) { characteristic.name })
-        |> list.unique
-        |> list.filter(in_any_row(_, fn(text) { text != "" }))
-        |> list.partition(
-          in_any_row(_, fn(text) {
-            string.length(text) > long_text || string.contains(text, " ")
-          }),
-        )
-      let rows =
-        list.map(profiles, fn(profile) {
-          Row(
-            name: profile.name,
-            cells: list.map(columns, value(profile, _)),
-            notes: long
-              |> list.map(fn(column) { #(column, value(profile, column)) })
-              |> list.filter(fn(note) { note.1 != "" }),
-          )
-        })
-      Table(type_name:, columns:, rows:)
-    }
-  }
-}
-
-/// The profile's text for the characteristic `column`, empty when it has none.
-fn value(profile: Profile, column: String) -> String {
-  profile.characteristics
-  |> list.find(fn(characteristic) { characteristic.name == column })
-  |> result.map(fn(characteristic) { characteristic.text })
-  |> result.unwrap("")
-}
-
-// --- Rules ------------------------------------------------------------------
 
 /// The visible rules on the unit and everything inside it, unique by name, in
 /// first-seen order.
 pub fn unit_rules(unit: Selection) -> List(Rule) {
   with_descendants(unit)
   |> list.flat_map(fn(selection) { selection.rules })
-  |> unique_rules
+  |> sheet.unique_rules
 }
 
 /// Every visible rule in the file, force rules included, unique by name. These
@@ -426,17 +308,7 @@ pub fn all_rules(roster: Roster) -> List(Rule) {
         |> list.flat_map(fn(selection) { selection.rules }),
     )
   })
-  |> unique_rules
-}
-
-fn unique_rules(rules: List(Rule)) -> List(Rule) {
-  let visible = list.filter(rules, fn(rule) { !rule.hidden })
-  visible
-  |> list.map(fn(rule) { rule.name })
-  |> list.unique
-  |> list.filter_map(fn(name) {
-    list.find(visible, fn(rule) { rule.name == name })
-  })
+  |> sheet.unique_rules
 }
 
 pub fn find_rule(roster: Roster, name: String) -> Result(Rule, Nil) {

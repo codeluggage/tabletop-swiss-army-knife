@@ -5,6 +5,7 @@
     "forces": [
       {
         "name": "Picnic Host",
+        "catalogueId": "cat-teapot",
         "catalogueName": "Teapot Golems",
         "rules": [
           {
@@ -32,12 +33,13 @@
           },
           {
             "id": "u-captain",
+            "entryId": "e-captain",
             "name": "Kettle Captain",
             "type": "model",
             "number": 1,
             "costs": [{ "name": "acorns", "value": 40 }],
             "categories": [
-              { "name": "Leader", "primary": true },
+              { "entryId": "c-leader", "name": "Leader", "primary": true },
               { "name": "Kettle", "primary": false }
             ],
             "profiles": [
@@ -106,6 +108,7 @@
             "selections": [
               {
                 "id": "u-squad-cups",
+                "entryId": "e-squad::e-teacup",
                 "name": "Teacup",
                 "type": "model",
                 "number": 3,

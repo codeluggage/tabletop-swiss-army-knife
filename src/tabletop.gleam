@@ -22,6 +22,7 @@ import lustre/event
 import tabletop/browser
 import tabletop/roster.{type Roster, type Selection}
 import tabletop/route.{type Route}
+import tabletop/sheet
 import tabletop/storage.{type Database, type Persistence, type StorageError}
 import tabletop/version
 
@@ -473,7 +474,7 @@ fn saved_row(saved: Saved, confirming: Bool) -> Element(Msg) {
         ],
         [
           name,
-          meta(roster.format_costs(roster.totals(decoded))),
+          meta(sheet.format_costs(roster.totals(decoded))),
           meta("Imported " <> browser.local_time(saved.imported)),
         ],
       )
@@ -619,7 +620,7 @@ fn unit_row(list_id: String, unit: Selection) -> Element(Msg) {
       ],
       [
         html.span([attribute.class("name")], [html.text(unit.name)]),
-        meta(roster.format_costs(roster.unit_costs(unit))),
+        meta(sheet.format_costs(roster.unit_costs(unit))),
       ],
     ),
   ])
@@ -641,7 +642,10 @@ fn unit_page(
           html.h1([], [html.text(unit.name)]),
           costs(roster.unit_costs(unit)),
         ],
-        list.map(roster.profile_groups(unit), profile_group(_, text)),
+        list.map(
+          sheet.profile_groups(roster.unit_profiles(unit)),
+          profile_group(_, text),
+        ),
         [
           rule_chips(saved.id, roster.unit_rules(unit), html.h2),
           case keywords {
@@ -669,11 +673,11 @@ fn unit_page(
 }
 
 fn profile_group(
-  group: roster.ProfileGroup,
+  group: sheet.ProfileGroup,
   text: fn(String) -> List(Element(Msg)),
 ) -> Element(Msg) {
   case group {
-    roster.TextList(type_name:, items:) ->
+    sheet.TextList(type_name:, items:) ->
       html.section([], [
         html.h2([], [html.text(type_name)]),
         html.ul(
@@ -686,7 +690,7 @@ fn profile_group(
           }),
         ),
       ])
-    roster.Table(type_name:, columns:, rows:) ->
+    sheet.Table(type_name:, columns:, rows:) ->
       html.section([], [
         html.h2([], [html.text(type_name)]),
         html.div(
@@ -809,7 +813,7 @@ fn rich_text(
 
 fn rule_chips(
   list_id: String,
-  rules: List(roster.Rule),
+  rules: List(sheet.Rule),
   heading: fn(List(attribute.Attribute(Msg)), List(Element(Msg))) ->
     Element(Msg),
 ) -> Element(Msg) {
@@ -848,12 +852,12 @@ fn arrow() -> Element(Msg) {
   html.span([attribute.aria_hidden(True)], [html.text("← ")])
 }
 
-fn costs(costs: List(roster.Cost)) -> Element(Msg) {
+fn costs(costs: List(sheet.Cost)) -> Element(Msg) {
   case costs {
     [] -> element.none()
     _ ->
       html.p([attribute.class("costs")], [
-        html.text(roster.format_costs(costs)),
+        html.text(sheet.format_costs(costs)),
       ])
   }
 }

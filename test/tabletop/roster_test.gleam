@@ -3,9 +3,10 @@ import gleam/option.{None, Some}
 import gleam/string
 import simplifile
 import tabletop/roster.{
-  type Roster, type Selection, Bold, Cost, NoRoster, NotJson, Regular, Roster,
-  Row, RuleLink, Table, Text, TextList, UnexpectedShape,
+  type Roster, type Selection, Bold, NoRoster, NotJson, Regular, Roster,
+  RuleLink, Text, UnexpectedShape,
 }
+import tabletop/sheet.{Cost}
 
 fn fixture() -> Roster {
   let assert Ok(text) = simplifile.read("test/fixtures/invented-list.json")
@@ -22,7 +23,7 @@ fn names(selections: List(Selection)) -> List(String) {
   list.map(selections, fn(selection) { selection.name })
 }
 
-fn rule_names(rules: List(roster.Rule)) -> List(String) {
+fn rule_names(rules: List(sheet.Rule)) -> List(String) {
   list.map(rules, fn(rule) { rule.name })
 }
 
@@ -66,11 +67,30 @@ pub fn an_empty_roster_still_decodes_test() {
   assert roster.units(force) == []
 }
 
-pub fn costs_may_be_ints_or_floats_test() {
-  let text =
-    "{\"roster\": {\"costs\": [{\"name\": \"a\", \"value\": 2.5}, {\"name\": \"b\", \"value\": 3}]}}"
-  let assert Ok(decoded) = roster.decode(text)
-  assert decoded.costs == [Cost("a", 2.5), Cost("b", 3.0)]
+pub fn ids_the_file_has_are_kept_test() {
+  let assert [force] = fixture().forces
+  assert force.catalogue_id == "cat-teapot"
+  assert unit("u-captain").entry_ids == ["e-captain"]
+  let assert [cups, ..] = unit("u-squad").selections
+  assert cups.entry_ids == ["e-squad", "e-teacup"]
+  let assert [leader, ..] = unit("u-captain").categories
+  assert leader.id == "c-leader"
+}
+
+pub fn ids_the_file_lacks_are_empty_test() {
+  let assert Ok(decoded) = roster.decode("{\"roster\": {\"forces\": [{}]}}")
+  let assert [force] = decoded.forces
+  assert force.catalogue_id == ""
+  assert unit("u-walker").entry_ids == []
+  let assert [_, kettle] = unit("u-captain").categories
+  assert kettle.id == ""
+}
+
+pub fn the_kind_comes_from_the_type_test() {
+  assert unit("u-captain").kind == sheet.Model
+  assert unit("u-squad").kind == sheet.Unit
+  let assert [setting] = list.flat_map(fixture().forces, roster.settings)
+  assert setting.kind == sheet.Upgrade
 }
 
 // --- Units, settings, costs -------------------------------------------------
@@ -98,49 +118,43 @@ pub fn find_unit_finds_only_top_level_units_test() {
 }
 
 pub fn a_unit_costs_the_sum_over_everything_inside_it_test() {
-  assert roster.unit_costs(unit("u-captain")) == [Cost("acorns", 45.0)]
-  assert roster.unit_costs(unit("u-squad")) == [Cost("acorns", 45.0)]
+  assert roster.unit_costs(unit("u-captain")) == [Cost("acorns", "", 45.0)]
+  assert roster.unit_costs(unit("u-squad")) == [Cost("acorns", "", 45.0)]
 }
 
 pub fn a_zero_total_is_left_out_test() {
   let zero_and_two =
     roster.Selection(
       ..unit("u-walker"),
-      costs: [Cost("a", 0.0), Cost("b", 2.0)],
+      costs: [Cost("a", "", 0.0), Cost("b", "", 2.0)],
       selections: [],
     )
-  assert roster.unit_costs(zero_and_two) == [Cost("b", 2.0)]
-  assert roster.unit_costs(unit("u-walker")) == [Cost("acorns", 30.0)]
+  assert roster.unit_costs(zero_and_two) == [Cost("b", "", 2.0)]
+  assert roster.unit_costs(unit("u-walker")) == [Cost("acorns", "", 30.0)]
 }
 
 pub fn unit_costs_keep_first_seen_order_test() {
-  let child = roster.Selection(..unit("u-walker"), costs: [Cost("a", 3.0)])
+  let child =
+    roster.Selection(..unit("u-walker"), costs: [Cost("a", "t-other", 3.0)])
   let parent =
     roster.Selection(
       ..unit("u-walker"),
-      costs: [Cost("b", 1.0), Cost("a", 2.0)],
+      costs: [Cost("b", "t-b", 1.0), Cost("a", "t-a", 2.0)],
       selections: [child],
     )
-  assert roster.unit_costs(parent) == [Cost("b", 1.0), Cost("a", 5.0)]
+  // A sum keeps the type id of the first cost with its name.
+  assert roster.unit_costs(parent)
+    == [Cost("b", "t-b", 1.0), Cost("a", "t-a", 5.0)]
 }
 
 pub fn totals_come_from_the_file_when_it_has_them_test() {
-  assert roster.totals(fixture()) == [Cost("acorns", 120.0)]
+  assert roster.totals(fixture()) == [Cost("acorns", "", 120.0)]
 }
 
 pub fn totals_are_the_sum_over_everything_otherwise_test() {
   let roster = Roster(..fixture(), costs: [])
-  assert roster.totals(roster) == [Cost("favour", 3.0), Cost("acorns", 120.0)]
-}
-
-pub fn format_value_drops_the_point_on_whole_numbers_test() {
-  assert roster.format_value(120.0) == "120"
-  assert roster.format_value(0.0) == "0"
-  assert roster.format_value(2.5) == "2.5"
-  assert roster.format_value(0.1 +. 0.2) == "0.3"
-  assert roster.format_costs([Cost("acorns", 45.0), Cost("favour", 1.5)])
-    == "45 acorns, 1.5 favour"
-  assert roster.format_costs([]) == ""
+  assert roster.totals(roster)
+    == [Cost("favour", "", 3.0), Cost("acorns", "", 120.0)]
 }
 
 // --- Categories -------------------------------------------------------------
@@ -166,39 +180,16 @@ pub fn units_group_by_primary_category_with_the_rest_last_test() {
 
 // --- Profiles ---------------------------------------------------------------
 
-pub fn profiles_group_by_type_in_first_seen_order_test() {
-  assert roster.profile_groups(unit("u-captain"))
+pub fn unit_profiles_are_the_unit_then_everything_inside_test() {
+  let names = fn(id) {
+    list.map(roster.unit_profiles(unit(id)), fn(profile) { profile.name })
+  }
+  assert names("u-captain") == ["Kettle Captain", "Whistle", "Ladle"]
+  // Hidden profiles and repeats are still here; the sheet drops them.
+  assert names("u-squad")
     == [
-      Table("Golem", ["Stride", "Grip", "Steam", "Rivets"], [
-        Row("Kettle Captain", ["5\"", "3+", "4", "6"], []),
-      ]),
-      TextList("Quirk", [
-        #(
-          "Whistle",
-          "When the kettle whistles, allies with **Steam Vent** gain Glow 2.\nOnce per game.",
-        ),
-      ]),
-      // Traits holds a long value, so it moves under the name as a note.
-      Table("Gadget", ["Reach", "Sparks"], [
-        Row("Ladle", ["1\"", "2"], [#("Traits", "Steam Vent-Fused 3+, Glow 2")]),
-      ]),
-    ]
-}
-
-pub fn same_profiles_show_once_and_missing_values_are_empty_test() {
-  // Two models hold the same sling; the sergeant has no Steam and a Rivets
-  // with no text; the teacup's Rivets is null; the hidden profile is skipped.
-  // Rivets is empty in every row, so the column is left out. Traits holds a
-  // space, so it is words and moves under the name.
-  assert roster.profile_groups(unit("u-squad"))
-    == [
-      Table("Golem", ["Stride", "Grip", "Steam"], [
-        Row("Teacup", ["6\"", "4+", "2"], []),
-        Row("Teacup Sergeant", ["6\"", "3+", ""], []),
-      ]),
-      Table("Gadget", ["Reach", "Sparks"], [
-        Row("Saucer Sling", ["12\"", "1"], [#("Traits", "Glow 2")]),
-      ]),
+      "Teacup", "Saucer Sling", "Teacup Sergeant", "Secret Recipe",
+      "Saucer Sling",
     ]
 }
 
