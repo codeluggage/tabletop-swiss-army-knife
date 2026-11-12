@@ -188,16 +188,16 @@ pub fn profiles_group_by_type_in_first_seen_order_test() {
 pub fn same_profiles_show_once_and_missing_values_are_empty_test() {
   // Two models hold the same sling; the sergeant has no Steam and a Rivets
   // with no text; the teacup's Rivets is null; the hidden profile is skipped.
-  // Rivets is empty in every row, so the column is left out. Traits is short
-  // here, so it stays a column.
+  // Rivets is empty in every row, so the column is left out. Traits holds a
+  // space, so it is words and moves under the name.
   assert roster.profile_groups(unit("u-squad"))
     == [
       Table("Golem", ["Stride", "Grip", "Steam"], [
         Row("Teacup", ["6\"", "4+", "2"], []),
         Row("Teacup Sergeant", ["6\"", "3+", ""], []),
       ]),
-      Table("Gadget", ["Reach", "Sparks", "Traits"], [
-        Row("Saucer Sling", ["12\"", "1", "Glow 2"], []),
+      Table("Gadget", ["Reach", "Sparks"], [
+        Row("Saucer Sling", ["12\"", "1"], [#("Traits", "Glow 2")]),
       ]),
     ]
 }

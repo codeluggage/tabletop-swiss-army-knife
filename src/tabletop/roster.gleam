@@ -331,8 +331,9 @@ pub type Row {
   Row(name: String, cells: List(String), notes: List(#(String, String)))
 }
 
-/// A column with any value longer than this many characters is a long column.
-const long_text = 12
+/// A column is long when any of its values holds a space (words, not a
+/// number) or is longer than this many characters.
+const long_text = 8
 
 /// The visible profiles of the unit and everything inside it, grouped by type
 /// in first-seen order. A profile identical to one already in its group
@@ -376,7 +377,9 @@ fn group(type_name: String, profiles: List(Profile)) -> ProfileGroup {
         |> list.unique
         |> list.filter(in_any_row(_, fn(text) { text != "" }))
         |> list.partition(
-          in_any_row(_, fn(text) { string.length(text) > long_text }),
+          in_any_row(_, fn(text) {
+            string.length(text) > long_text || string.contains(text, " ")
+          }),
         )
       let rows =
         list.map(profiles, fn(profile) {
