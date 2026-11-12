@@ -23,6 +23,7 @@ import tabletop/browser
 import tabletop/roster.{type Roster, type Selection}
 import tabletop/route.{type Route}
 import tabletop/sheet
+import tabletop/sheet_view
 import tabletop/storage.{type Database, type Persistence, type StorageError}
 import tabletop/text
 import tabletop/version
@@ -475,14 +476,14 @@ fn saved_row(saved: Saved, confirming: Bool) -> Element(Msg) {
         ],
         [
           name,
-          meta(sheet.format_costs(roster.totals(decoded))),
-          meta("Imported " <> browser.local_time(saved.imported)),
+          sheet_view.meta(sheet.format_costs(roster.totals(decoded))),
+          sheet_view.meta("Imported " <> browser.local_time(saved.imported)),
         ],
       )
     Error(Nil) ->
       html.div([attribute.class("row-link")], [
         name,
-        meta("This list could not be read"),
+        sheet_view.meta("This list could not be read"),
       ])
   }
   let delete = case confirming {
@@ -529,30 +530,25 @@ fn with_list(
   case model.lists {
     None -> [html.p([attribute.class("note")], [html.text("Opening…")])]
     Some(Error(error)) ->
-      not_found("The saved lists could not be read. " <> describe(error))
+      sheet_view.not_found(
+        "The saved lists could not be read. " <> describe(error),
+      )
     Some(Ok(lists)) ->
       case list.find(lists, fn(saved) { saved.id == list_id }) {
-        Error(Nil) -> not_found("This list is not on this device.")
+        Error(Nil) -> sheet_view.not_found("This list is not on this device.")
         Ok(Saved(roster: Error(Nil), ..)) ->
-          not_found("This list could not be read.")
+          sheet_view.not_found("This list could not be read.")
         Ok(Saved(roster: Ok(decoded), ..) as saved) -> render(saved, decoded)
       }
   }
 }
 
-fn not_found(message: String) -> List(Element(Msg)) {
-  [
-    back_link(route.Home, "All lists"),
-    html.p([attribute.class("note")], [html.text(message)]),
-  ]
-}
-
 fn list_page(saved: Saved, decoded: Roster) -> List(Element(Msg)) {
   let titled = list.length(decoded.forces) > 1
   [
-    back_link(route.Home, "All lists"),
+    sheet_view.back_link(route.Home, "All lists"),
     html.h1([], [html.text(title(saved))]),
-    costs(roster.totals(decoded)),
+    sheet_view.costs(roster.totals(decoded)),
     ..list.map(decoded.forces, force_section(saved.id, _, titled))
   ]
 }
@@ -592,9 +588,9 @@ fn force_section(
       )
   }
   let rules =
-    rule_chips(
-      list_id,
+    sheet_view.rule_chips(
       list.filter(force.rules, fn(rule) { !rule.hidden }),
+      rule_chip_href(list_id, _),
       heading,
     )
   let units =
@@ -621,7 +617,7 @@ fn unit_row(list_id: String, unit: Selection) -> Element(Msg) {
       ],
       [
         html.span([attribute.class("name")], [html.text(unit.name)]),
-        meta(sheet.format_costs(roster.unit_costs(unit))),
+        sheet_view.meta(sheet.format_costs(roster.unit_costs(unit))),
       ],
     ),
   ])
@@ -633,22 +629,27 @@ fn unit_page(
   unit_id: String,
 ) -> List(Element(Msg)) {
   case roster.find_unit(decoded, unit_id) {
-    Error(Nil) -> not_found("This unit is not in this list.")
+    Error(Nil) -> sheet_view.not_found("This unit is not in this list.")
     Ok(unit) -> {
-      let text = rich_text(saved.id, rule_links(decoded), _)
+      let href = rule_href(saved.id, _)
+      let text = sheet_view.rich_text(_, rule_links(decoded), href)
       let keywords = list.map(unit.categories, fn(category) { category.name })
       list.flatten([
         [
-          back_link(route.ListPage(saved.id), title(saved)),
+          sheet_view.back_link(route.ListPage(saved.id), title(saved)),
           html.h1([], [html.text(unit.name)]),
-          costs(roster.unit_costs(unit)),
+          sheet_view.costs(roster.unit_costs(unit)),
         ],
         list.map(
           sheet.profile_groups(roster.unit_profiles(unit)),
-          profile_group(_, text),
+          sheet_view.profile_group(_, text),
         ),
         [
-          rule_chips(saved.id, roster.unit_rules(unit), html.h2),
+          sheet_view.rule_chips(
+            roster.unit_rules(unit),
+            rule_chip_href(saved.id, _),
+            html.h2,
+          ),
           case keywords {
             [] -> element.none()
             _ ->
@@ -670,71 +671,6 @@ fn unit_page(
         ],
       ])
     }
-  }
-}
-
-fn profile_group(
-  group: sheet.ProfileGroup,
-  text: fn(String) -> List(Element(Msg)),
-) -> Element(Msg) {
-  case group {
-    sheet.TextList(type_name:, items:) ->
-      html.section([], [
-        html.h2([], [html.text(type_name)]),
-        html.ul(
-          [attribute.class("text-list")],
-          list.map(items, fn(item) {
-            html.li([], [
-              html.strong([], [html.text(item.0)]),
-              html.div([attribute.class("prose")], text(item.1)),
-            ])
-          }),
-        ),
-      ])
-    sheet.Table(type_name:, columns:, rows:) ->
-      html.section([], [
-        html.h2([], [html.text(type_name)]),
-        html.div(
-          [
-            attribute.class("table-scroll"),
-            attribute.role("region"),
-            attribute.aria_label(type_name),
-            attribute.tabindex(0),
-          ],
-          [
-            html.table([], [
-              html.thead([], [
-                html.tr([], [
-                  html.th([attribute.scope("col")], [html.text("Name")]),
-                  ..list.map(columns, fn(column) {
-                    html.th([attribute.scope("col")], [html.text(column)])
-                  })
-                ]),
-              ]),
-              html.tbody(
-                [],
-                list.map(rows, fn(row) {
-                  html.tr([], [
-                    html.th([attribute.scope("row")], [
-                      html.text(row.name),
-                      ..list.map(row.notes, fn(note) {
-                        html.div([attribute.class("note")], [
-                          html.span([attribute.class("note-label")], [
-                            html.text(note.0),
-                          ]),
-                          html.text(" "),
-                          ..text(note.1)
-                        ])
-                      })
-                    ]),
-                    ..list.map(row.cells, fn(cell) { html.td([], text(cell)) })
-                  ])
-                }),
-              ),
-            ]),
-          ],
-        ),
-      ])
   }
 }
 
@@ -763,22 +699,25 @@ fn rule_page(
   rule_name: String,
 ) -> List(Element(Msg)) {
   case roster.find_rule(decoded, rule_name) {
-    Error(Nil) -> not_found("This rule is not in this list.")
-    Ok(rule) -> [
-      html.button(
-        [
-          attribute.type_("button"),
-          attribute.class("back"),
-          event.on_click(BackClicked),
-        ],
-        [arrow(), html.text("Back")],
-      ),
-      html.h1([], [html.text(rule.name)]),
-      html.div(
-        [attribute.class("prose")],
-        rich_text(saved.id, rule_links(decoded), rule.description),
-      ),
-    ]
+    Error(Nil) -> sheet_view.not_found("This rule is not in this list.")
+    Ok(rule) -> {
+      let href = rule_href(saved.id, _)
+      [
+        html.button(
+          [
+            attribute.type_("button"),
+            attribute.class("back"),
+            event.on_click(BackClicked),
+          ],
+          [sheet_view.arrow(), html.text("Back")],
+        ),
+        html.h1([], [html.text(rule.name)]),
+        html.div(
+          [attribute.class("prose")],
+          sheet_view.rich_text(rule.description, rule_links(decoded), href),
+        ),
+      ]
+    }
   }
 }
 
@@ -789,83 +728,12 @@ fn rule_links(decoded: Roster) -> text.Links(String) {
   |> text.links
 }
 
-/// Text with `**bold**` shown bold and rule names as links to the rule.
-fn rich_text(
-  list_id: String,
-  links: text.Links(String),
-  content: String,
-) -> List(Element(Msg)) {
-  use segment <- list.map(text.segments(content, links))
-  case segment {
-    text.Text(text: run, weight: text.Regular) -> html.text(run)
-    text.Text(text: run, weight: text.Bold) -> html.strong([], [html.text(run)])
-    text.Link(name:, target:, weight:) -> {
-      let link =
-        html.a(
-          [attribute.href(route.to_hash(route.RulePage(list_id, target)))],
-          [html.text(name)],
-        )
-      case weight {
-        text.Regular -> link
-        text.Bold -> html.strong([], [link])
-      }
-    }
-  }
+fn rule_href(list_id: String, rule_name: String) -> String {
+  route.to_hash(route.RulePage(list_id, rule_name))
 }
 
-fn rule_chips(
-  list_id: String,
-  rules: List(sheet.Rule),
-  heading: fn(List(attribute.Attribute(Msg)), List(Element(Msg))) ->
-    Element(Msg),
-) -> Element(Msg) {
-  case rules {
-    [] -> element.none()
-    _ ->
-      html.section([], [
-        heading([], [html.text("Rules")]),
-        html.ul(
-          [attribute.class("chips")],
-          list.map(rules, fn(rule) {
-            html.li([], [
-              html.a(
-                [
-                  attribute.href(
-                    route.to_hash(route.RulePage(list_id, rule.name)),
-                  ),
-                ],
-                [html.text(rule.name)],
-              ),
-            ])
-          }),
-        ),
-      ])
-  }
-}
-
-fn back_link(to: Route, label: String) -> Element(Msg) {
-  html.a([attribute.class("back"), attribute.href(route.to_hash(to))], [
-    arrow(),
-    html.text(label),
-  ])
-}
-
-fn arrow() -> Element(Msg) {
-  html.span([attribute.aria_hidden(True)], [html.text("← ")])
-}
-
-fn costs(costs: List(sheet.Cost)) -> Element(Msg) {
-  case costs {
-    [] -> element.none()
-    _ ->
-      html.p([attribute.class("costs")], [
-        html.text(sheet.format_costs(costs)),
-      ])
-  }
-}
-
-fn meta(text: String) -> Element(Msg) {
-  html.span([attribute.class("meta")], [html.text(text)])
+fn rule_chip_href(list_id: String, rule: sheet.Rule) -> String {
+  rule_href(list_id, rule.name)
 }
 
 fn title(saved: Saved) -> String {
