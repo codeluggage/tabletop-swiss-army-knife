@@ -49,3 +49,43 @@ export function now_ms() {
 export function local_time(ms) {
   return new Date(ms).toLocaleString();
 }
+
+export function current_hash() {
+  return location.hash;
+}
+
+export function on_hash_change(callback) {
+  window.addEventListener("hashchange", () => callback(location.hash));
+}
+
+export function history_back() {
+  history.back();
+}
+
+export function scroll_y() {
+  return window.scrollY;
+}
+
+export function scroll_to(y) {
+  window.scrollTo(0, y);
+}
+
+export function manual_scroll_restoration() {
+  history.scrollRestoration = "manual";
+}
+
+export function random_id() {
+  return crypto.randomUUID();
+}
+
+// The file chosen in a file input: its name and text. Clears the input, so
+// choosing the same file again still fires a change.
+export async function read_chosen_file(input) {
+  try {
+    const file = input.files[0];
+    input.value = "";
+    return Result$Ok([file.name, await file.text()]);
+  } catch (error) {
+    return Result$Error(String(error));
+  }
+}

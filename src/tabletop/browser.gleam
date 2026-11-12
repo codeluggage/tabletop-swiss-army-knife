@@ -1,6 +1,8 @@
 //// The page-level browser calls the app makes: the version stamped into the
-//// page, `version.json`, the service worker, tab visibility and the clock.
+//// page, `version.json`, the service worker, tab visibility, the clock,
+//// history and scrolling, ids and the chosen file.
 
+import gleam/dynamic.{type Dynamic}
 import gleam/javascript/promise.{type Promise}
 
 /// The version the build stamped into the running page.
@@ -37,3 +39,29 @@ pub fn now_ms() -> Int
 /// `ms` as a date and time in the reader's own locale and time zone.
 @external(javascript, "./browser_ffi.mjs", "local_time")
 pub fn local_time(ms: Int) -> String
+
+/// `history.back()`.
+@external(javascript, "./browser_ffi.mjs", "history_back")
+pub fn history_back() -> Nil
+
+/// How far the page is scrolled down, in CSS pixels.
+@external(javascript, "./browser_ffi.mjs", "scroll_y")
+pub fn scroll_y() -> Float
+
+@external(javascript, "./browser_ffi.mjs", "scroll_to")
+pub fn scroll_to(y: Float) -> Nil
+
+/// Stops the browser restoring scroll on back and forward, so the app can.
+@external(javascript, "./browser_ffi.mjs", "manual_scroll_restoration")
+pub fn manual_scroll_restoration() -> Nil
+
+/// A random UUID from `crypto.randomUUID()`.
+@external(javascript, "./browser_ffi.mjs", "random_id")
+pub fn random_id() -> String
+
+/// The name and text of the file chosen in the file `input` element. Clears
+/// the input, so choosing the same file again fires a change.
+@external(javascript, "./browser_ffi.mjs", "read_chosen_file")
+pub fn read_chosen_file(
+  input: Dynamic,
+) -> Promise(Result(#(String, String), String))
