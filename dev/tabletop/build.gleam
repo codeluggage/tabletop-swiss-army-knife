@@ -136,6 +136,9 @@ fn walk(
 /// The relative specifiers in a module's `import` and `export ... from`
 /// statements. Bare names such as `node:fs` are left out.
 pub fn import_specifiers(source: String) -> List(String) {
+  // ponytail: a text scan, not a JS parser. Enough for the compiler's output
+  // and the packages' FFI files; an import it finds but cannot read fails the
+  // build. Swap for a parser if a package ever hides an import from it.
   [
     #("from \"", "\""),
     #("from '", "'"),

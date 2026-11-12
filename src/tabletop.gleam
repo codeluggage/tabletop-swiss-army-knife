@@ -106,6 +106,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       from_promise(browser.activate_new_worker, WorkerActivated),
     )
     // The new worker takes over and fires ControllerChanged, which reloads.
+    // ponytail: if its install fails nothing reloads; Reload stays on screen
+    // and a second press tries again. Add a timeout if that ever bites.
     WorkerActivated(True) -> #(model, effect.none())
     WorkerActivated(False) -> #(model, reload())
     // A worker also takes over on the very first visit; reload only on request.
