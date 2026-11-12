@@ -165,9 +165,11 @@ The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026
 
 ### Layout
 
-- `src/tabletop.gleam` - the app: model, update, the home screen view.
+- `src/tabletop.gleam` - the app: model, update, the view of every screen.
 - `src/tabletop/storage.gleam` + `storage_ffi.mjs` - IndexedDB behind promises of `Result`, and the persistent storage request.
-- `src/tabletop/browser.gleam` + `browser_ffi.mjs` - page-level browser calls: the stamped version, `version.json`, the service worker, tab visibility, the clock.
+- `src/tabletop/browser.gleam` + `browser_ffi.mjs` - page-level browser calls: the stamped version, `version.json`, the service worker, tab visibility, the clock, history and scroll, random ids, the chosen file.
+- `src/tabletop/roster.gleam` - the imported list file: its types, the decoder, and the pure functions the screens use (units, costs, profile tables, rules, text to segments).
+- `src/tabletop/route.gleam` - the screen in the URL hash: parse, `to_hash`, and the `hashchange` listener.
 - `src/tabletop/version.gleam` - the build version: parse, compare, `version.json`.
 - `web/` - the static shell: `index.html`, `manifest.webmanifest`, `sw.js`, `style.css`, `icons/`. `__VERSION__` and `__FILES__` are placeholders the build replaces.
 - `dev/tabletop/build.gleam`, `serve.gleam` + `node_ffi.mjs` - the build and serve commands, run on Node.

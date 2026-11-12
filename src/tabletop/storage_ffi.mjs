@@ -42,6 +42,27 @@ export function put(db, store, key, value) {
   }));
 }
 
+// Resolves to [keys, values]: two arrays in the same key order.
+export function get_all(db, store) {
+  return attempt(() => new Promise((resolve) => {
+    const objects = db.transaction(store, "readonly").objectStore(store);
+    const keys = objects.getAllKeys();
+    const values = objects.getAll();
+    values.onsuccess = () => resolve(Result$Ok([keys.result, values.result]));
+    keys.onerror = () => resolve(Result$Error(String(keys.error)));
+    values.onerror = () => resolve(Result$Error(String(values.error)));
+  }));
+}
+
+export function delete_(db, store, key) {
+  return attempt(() => new Promise((resolve) => {
+    const transaction = db.transaction(store, "readwrite");
+    transaction.objectStore(store).delete(key);
+    transaction.oncomplete = () => resolve(Result$Ok(undefined));
+    transaction.onerror = transaction.onabort = () => resolve(Result$Error(String(transaction.error)));
+  }));
+}
+
 export function persist() {
   return attempt(async () => Result$Ok(await navigator.storage.persist()));
 }

@@ -29,16 +29,261 @@ body {
   padding-bottom: 5rem;
 }
 
-.home {
-  max-width: 36rem;
+.page {
+  max-width: 40rem;
   margin: 0 auto;
+  overflow-wrap: anywhere;
 }
 
 h1 {
   font-size: 1.75rem;
-  margin: 0.5rem 0 1.5rem;
+  line-height: 1.25;
+  margin: 0.5rem 0 1rem;
   border-bottom: 0.25rem solid var(--accent);
   display: inline-block;
+}
+
+h2 {
+  font-size: 1.2rem;
+  margin: 1.75rem 0 0.5rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+h2 small {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: normal;
+  color: var(--muted);
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 0.15em;
+  text-underline-offset: 0.15em;
+}
+
+:focus-visible {
+  outline: 0.2rem solid var(--accent);
+  outline-offset: 0.15rem;
+}
+
+.note,
+.costs,
+.meta {
+  color: var(--muted);
+}
+
+.costs {
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
+
+/* Buttons, and the file input's label that looks like one. */
+.button,
+.back {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: 1px solid color-mix(in srgb, var(--muted) 50%, transparent);
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.button.big {
+  width: 100%;
+  min-height: 3.5rem;
+  border: 0;
+  background: var(--accent);
+  color: #1d2b36;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.button.danger {
+  border-color: #b3261e;
+  background: #b3261e;
+  color: #fff;
+}
+
+.back {
+  display: flex;
+  width: fit-content;
+  gap: 0.35rem;
+  border: 0;
+  padding: 0;
+  text-decoration: none;
+  color: var(--muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.import {
+  margin-bottom: 1rem;
+}
+
+.import input:focus-visible + label {
+  outline: 0.2rem solid var(--ink);
+  outline-offset: 0.15rem;
+}
+
+.problem {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem 1rem;
+  border-left: 0.25rem solid #b3261e;
+  background: color-mix(in srgb, #b3261e 12%, transparent);
+}
+
+/* Rows that open a screen: the saved lists and the units. */
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rows > li {
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+}
+
+.row-link {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 3.5rem;
+  padding: 0.5rem 0;
+  text-decoration: none;
+}
+
+.row-link .name {
+  font-weight: 600;
+}
+
+.row-link .meta {
+  font-size: 0.9rem;
+}
+
+.saved {
+  padding-bottom: 0.75rem;
+}
+
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.confirm span {
+  margin-right: auto;
+  font-weight: 600;
+}
+
+.settings {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.setting-name {
+  color: var(--muted);
+}
+
+/* Rule names as tap targets. */
+.chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+.chips a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 0.85rem;
+  border-radius: 1.4rem;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  text-decoration: none;
+}
+
+.prose {
+  white-space: pre-line;
+}
+
+.text-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.text-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+}
+
+/* A wide table scrolls inside its own box; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+  border-radius: 0.4rem;
+}
+
+table {
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  overflow-wrap: normal;
+}
+
+th,
+td {
+  padding: 0.45rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 20%, transparent);
+}
+
+thead th {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+tbody th {
+  white-space: normal;
+  min-width: 7rem;
+}
+
+td.long {
+  white-space: normal;
+  min-width: 10rem;
+}
+
+.includes {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.about {
+  margin-top: 2.5rem;
 }
 
 dl {

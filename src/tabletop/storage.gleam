@@ -17,12 +17,15 @@ pub type Database
 pub type Store {
   /// App metadata, one record per key, such as when the app was first opened.
   Meta
+  /// Imported list files, one record per list, keyed by a random id.
+  Lists
 }
 
 pub type StorageError {
   OpenFailed(reason: String)
   ReadFailed(reason: String)
   WriteFailed(reason: String)
+  DeleteFailed(reason: String)
   Undecodable(key: String)
 }
 
@@ -36,7 +39,7 @@ pub type Persistence {
 const database_name = "tabletop"
 
 /// Oldest first. Step n moves a database from schema version n - 1 to n.
-const upgrades: List(List(Store)) = [[Meta]]
+const upgrades: List(List(Store)) = [[Meta], [Lists]]
 
 pub fn schema_version() -> Int {
   list.length(upgrades)
@@ -54,6 +57,7 @@ pub fn stores_to_create(from old_version: Int) -> List(String) {
 fn store_name(store: Store) -> String {
   case store {
     Meta -> "meta"
+    Lists -> "lists"
   }
 }
 
@@ -85,6 +89,46 @@ pub fn put(
 ) -> Promise(Result(Nil, StorageError)) {
   do_put(db, store_name(store), key, json.to_string(value))
   |> promise.map(result.map_error(_, WriteFailed))
+}
+
+/// Every record in `store` with its key, in key order. A record that does not
+/// decode comes back as an error of its own, so one bad record hides no other.
+pub fn get_all(
+  db: Database,
+  store: Store,
+  decoder: decode.Decoder(a),
+) -> Promise(Result(List(#(String, Result(a, StorageError))), StorageError)) {
+  do_get_all(db, store_name(store))
+  |> promise.map(fn(raw) {
+    use raw <- result.try(result.map_error(raw, ReadFailed))
+    use pairs <- result.map(
+      decode.run(raw, keys_and_values())
+      |> result.replace_error(ReadFailed("The saved keys could not be read.")),
+    )
+    use #(key, value) <- list.map(pairs)
+    #(key, case decode_value(value, key, decoder) {
+      Ok(Some(value)) -> Ok(value)
+      Ok(None) -> Error(Undecodable(key))
+      Error(error) -> Error(error)
+    })
+  })
+}
+
+/// `get_all` hands back `[keys, values]`, two lists in the same order.
+fn keys_and_values() -> decode.Decoder(List(#(String, Dynamic))) {
+  use keys <- decode.field(0, decode.list(decode.string))
+  use values <- decode.field(1, decode.list(decode.dynamic))
+  decode.success(list.zip(keys, values))
+}
+
+/// Resolves once the delete is committed. Deleting a missing key is no error.
+pub fn delete(
+  db: Database,
+  store: Store,
+  key: String,
+) -> Promise(Result(Nil, StorageError)) {
+  do_delete(db, store_name(store), key)
+  |> promise.map(result.map_error(_, DeleteFailed))
 }
 
 pub fn persist() -> Promise(Persistence) {
@@ -132,6 +176,16 @@ fn do_put(
   store: String,
   key: String,
   value: String,
+) -> Promise(Result(Nil, String))
+
+@external(javascript, "./storage_ffi.mjs", "get_all")
+fn do_get_all(db: Database, store: String) -> Promise(Result(Dynamic, String))
+
+@external(javascript, "./storage_ffi.mjs", "delete_")
+fn do_delete(
+  db: Database,
+  store: String,
+  key: String,
 ) -> Promise(Result(Nil, String))
 
 @external(javascript, "./storage_ffi.mjs", "persist")
