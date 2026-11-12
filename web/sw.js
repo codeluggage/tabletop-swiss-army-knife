@@ -1,4 +1,4 @@
-// Tabletop service worker. The build stamps __VERSION__ and __FILES__.
+// Tabletop service worker. The build stamps the version and the file list.
 // One cache per build, named per site so two copies on one origin keep apart.
 const PREFIX = `tabletop ${self.registration.scope} `;
 const CACHE = PREFIX + "__VERSION__";
