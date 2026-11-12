@@ -1,0 +1,7 @@
+build/
+dist/
+local-data/
+node_modules/
+erl_crash.dump
+.DS_Store
+.claude/settings.local.json
