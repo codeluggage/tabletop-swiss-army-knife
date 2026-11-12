@@ -710,10 +710,19 @@ fn profile_group(
                 [],
                 list.map(rows, fn(row) {
                   html.tr([], [
-                    html.th([attribute.scope("row")], [html.text(row.name)]),
-                    ..list.map(row.cells, fn(cell) {
-                      html.td([cell_class(cell)], text(cell))
-                    })
+                    html.th([attribute.scope("row")], [
+                      html.text(row.name),
+                      ..list.map(row.notes, fn(note) {
+                        html.div([attribute.class("note")], [
+                          html.span([attribute.class("note-label")], [
+                            html.text(note.0),
+                          ]),
+                          html.text(" "),
+                          ..text(note.1)
+                        ])
+                      })
+                    ]),
+                    ..list.map(row.cells, fn(cell) { html.td([], text(cell)) })
                   ])
                 }),
               ),
@@ -721,14 +730,6 @@ fn profile_group(
           ],
         ),
       ])
-  }
-}
-
-/// Short cells keep to one line, so short columns stay narrow; long ones wrap.
-fn cell_class(cell: String) -> attribute.Attribute(Msg) {
-  case string.length(cell) > 12 {
-    True -> attribute.class("long")
-    False -> attribute.none()
   }
 }
 

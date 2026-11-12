@@ -272,9 +272,15 @@ tbody th {
   min-width: 7rem;
 }
 
-td.long {
-  white-space: normal;
-  min-width: 10rem;
+/* Long text from the file, shown under the row's name instead of a column. */
+.note {
+  margin-top: 0.3rem;
+  font-weight: normal;
+  font-size: 0.85rem;
+}
+
+.note-label {
+  color: var(--muted);
 }
 
 .includes {

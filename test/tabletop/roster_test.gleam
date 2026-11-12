@@ -170,7 +170,7 @@ pub fn profiles_group_by_type_in_first_seen_order_test() {
   assert roster.profile_groups(unit("u-captain"))
     == [
       Table("Golem", ["Stride", "Grip", "Steam", "Rivets"], [
-        Row("Kettle Captain", ["5\"", "3+", "4", "6"]),
+        Row("Kettle Captain", ["5\"", "3+", "4", "6"], []),
       ]),
       TextList("Quirk", [
         #(
@@ -178,8 +178,9 @@ pub fn profiles_group_by_type_in_first_seen_order_test() {
           "When the kettle whistles, allies with **Steam Vent** gain Glow 2.\nOnce per game.",
         ),
       ]),
-      Table("Gadget", ["Reach", "Sparks", "Traits"], [
-        Row("Ladle", ["1\"", "2", "Steam Vent-Fused 3+, Glow 2"]),
+      // Traits holds a long value, so it moves under the name as a note.
+      Table("Gadget", ["Reach", "Sparks"], [
+        Row("Ladle", ["1\"", "2"], [#("Traits", "Steam Vent-Fused 3+, Glow 2")]),
       ]),
     ]
 }
@@ -187,14 +188,16 @@ pub fn profiles_group_by_type_in_first_seen_order_test() {
 pub fn same_profiles_show_once_and_missing_values_are_empty_test() {
   // Two models hold the same sling; the sergeant has no Steam and a Rivets
   // with no text; the teacup's Rivets is null; the hidden profile is skipped.
+  // Rivets is empty in every row, so the column is left out. Traits is short
+  // here, so it stays a column.
   assert roster.profile_groups(unit("u-squad"))
     == [
-      Table("Golem", ["Stride", "Grip", "Steam", "Rivets"], [
-        Row("Teacup", ["6\"", "4+", "2", ""]),
-        Row("Teacup Sergeant", ["6\"", "3+", "", ""]),
+      Table("Golem", ["Stride", "Grip", "Steam"], [
+        Row("Teacup", ["6\"", "4+", "2"], []),
+        Row("Teacup Sergeant", ["6\"", "3+", ""], []),
       ]),
       Table("Gadget", ["Reach", "Sparks", "Traits"], [
-        Row("Saucer Sling", ["12\"", "1", "Glow 2"]),
+        Row("Saucer Sling", ["12\"", "1", "Glow 2"], []),
       ]),
     ]
 }

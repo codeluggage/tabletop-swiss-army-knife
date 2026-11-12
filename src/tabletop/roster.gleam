@@ -318,14 +318,21 @@ pub type ProfileGroup {
   /// Every profile of the type has exactly one characteristic: each item is
   /// the profile name and that characteristic's text.
   TextList(type_name: String, items: List(#(String, String)))
-  /// One column per characteristic name, in first-seen order. Each row's
+  /// One column per characteristic name, in first-seen order, leaving out a
+  /// column with no value in any row and a column with long text. Each row's
   /// cells line up with the columns, empty where the profile has no value.
   Table(type_name: String, columns: List(String), rows: List(Row))
 }
 
+/// `notes` holds the row's text in the long columns, as column name and text,
+/// leaving out empty ones. The view shows them under the name, so a phone
+/// screen fits the short columns without scrolling sideways.
 pub type Row {
-  Row(name: String, cells: List(String))
+  Row(name: String, cells: List(String), notes: List(#(String, String)))
 }
+
+/// A column with any value longer than this many characters is a long column.
+const long_text = 12
 
 /// The visible profiles of the unit and everything inside it, grouped by type
 /// in first-seen order. A profile identical to one already in its group
@@ -359,26 +366,39 @@ fn group(type_name: String, profiles: List(Profile)) -> ProfileGroup {
         }),
       )
     False -> {
-      let columns =
+      let in_any_row = fn(column, check) {
+        list.any(profiles, fn(profile) { check(value(profile, column)) })
+      }
+      let #(long, columns) =
         profiles
         |> list.flat_map(fn(profile) { profile.characteristics })
         |> list.map(fn(characteristic) { characteristic.name })
         |> list.unique
+        |> list.filter(in_any_row(_, fn(text) { text != "" }))
+        |> list.partition(
+          in_any_row(_, fn(text) { string.length(text) > long_text }),
+        )
       let rows =
         list.map(profiles, fn(profile) {
           Row(
             name: profile.name,
-            cells: list.map(columns, fn(column) {
-              profile.characteristics
-              |> list.find(fn(characteristic) { characteristic.name == column })
-              |> result.map(fn(characteristic) { characteristic.text })
-              |> result.unwrap("")
-            }),
+            cells: list.map(columns, value(profile, _)),
+            notes: long
+              |> list.map(fn(column) { #(column, value(profile, column)) })
+              |> list.filter(fn(note) { note.1 != "" }),
           )
         })
       Table(type_name:, columns:, rows:)
     }
   }
+}
+
+/// The profile's text for the characteristic `column`, empty when it has none.
+fn value(profile: Profile, column: String) -> String {
+  profile.characteristics
+  |> list.find(fn(characteristic) { characteristic.name == column })
+  |> result.map(fn(characteristic) { characteristic.text })
+  |> result.unwrap("")
 }
 
 // --- Rules ------------------------------------------------------------------
