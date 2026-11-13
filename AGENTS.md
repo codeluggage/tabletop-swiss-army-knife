@@ -165,10 +165,14 @@ The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026
 
 ### Layout
 
-- `src/tabletop.gleam` - the app: model, update, the view of every screen.
+- `src/tabletop.gleam` - the shell: flags, the version and the update bar, the service worker, opening storage, the route and scroll, the chosen file, the home screen's frame and "About this device", and the wiring of each feature.
+- `src/tabletop/lists.gleam` - the list feature: its state, messages and effects, importing and deleting lists, and the saved lists, list, unit and rule screens.
 - `src/tabletop/storage.gleam` + `storage_ffi.mjs` - IndexedDB behind promises of `Result`, and the persistent storage request.
 - `src/tabletop/browser.gleam` + `browser_ffi.mjs` - page-level browser calls: the stamped version, `version.json`, the service worker, tab visibility, the clock, history and scroll, random ids, the chosen file.
-- `src/tabletop/roster.gleam` - the imported list file: its types, the decoder, and the pure functions the screens use (units, costs, profile tables, rules, text to segments).
+- `src/tabletop/roster.gleam` - the imported list file: its types, the decoder, and the pure functions the list screens use (units, settings, costs, categories, a unit's profiles and rules).
+- `src/tabletop/sheet.gleam` - the shapes a datasheet shows, whichever file they come from (costs, categories, profiles, rules, entry kinds), their decoders, and profile tables.
+- `src/tabletop/text.gleam` - text to segments: `**bold**` runs and names that link to a target each feature picks.
+- `src/tabletop/sheet_view.gleam` - the views every feature shares: profile tables, text with links, rule chips, costs, back links, the not found message and storage errors in words.
 - `src/tabletop/route.gleam` - the screen in the URL hash: parse, `to_hash`, and the `hashchange` listener.
 - `src/tabletop/version.gleam` - the build version: parse, compare, `version.json`.
 - `web/` - the static shell: `index.html`, `manifest.webmanifest`, `sw.js`, `style.css`, `icons/`. `__VERSION__` and `__FILES__` are placeholders the build replaces.
@@ -185,3 +189,17 @@ The schema lives in `src/tabletop/storage.gleam`. Each step in `upgrades` moves 
 3. Run `gleam test`, then update the schema test in `test/tabletop/storage_test.gleam` to the new version.
 
 Never edit or reorder a step that has shipped. A browser that already ran it will not run it again.
+
+### Adding a feature
+
+A feature is one module under `src/tabletop/`, shaped like `lists.gleam`. It imports no other feature. It shows datasheets with `sheet.gleam`, `text.gleam` and `sheet_view.gleam`, and says where a link goes with an `href` function.
+
+1. In the module, define `State`, `Msg`, `init() -> State` and `update(state, msg, db) -> #(State, Effect(Msg))`. `db` is the shell's `model.storage`.
+2. Keep its effects in the module. What it reads from storage starts in `load(db) -> Effect(Msg)`.
+3. Make each screen a `pub fn` that returns `List(Element(Msg))`, and add its routes to `route.gleam`.
+4. Wire it into `src/tabletop.gleam` in three places:
+   - `Model` gets one field for the feature's `State`, set from its `init()` in `init`.
+   - `Msg` gets one variant that wraps the feature's `Msg`. `update` hands it to the feature's `update` and maps the effect back, as `from_lists` does, and `StorageOpened` maps the feature's `load`.
+   - `view` sends each of the feature's routes to its screen and maps the elements, as `lists_view` does.
+5. State that should go when the screen changes, such as an open question, goes through a function like `lists.screen_changed`, called from `HashChanged`.
+6. Put its tests in `test/tabletop/<feature>_test.gleam`.
