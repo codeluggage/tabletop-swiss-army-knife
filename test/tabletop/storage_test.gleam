@@ -5,27 +5,39 @@ import gleam/list
 import gleam/option.{None, Some}
 import tabletop/storage.{BytesValue, JsonValue, Undecodable}
 
-pub fn schema_is_at_version_four_test() {
-  assert storage.schema_version() == 4
+pub fn schema_is_at_version_five_test() {
+  assert storage.schema_version() == 5
 }
 
 pub fn a_new_database_gets_every_store_test() {
   assert storage.stores_to_create(from: 0)
-    == ["meta", "lists", "data_indexes", "data_zips", "cards"]
+    == [
+      "meta",
+      "lists",
+      "data_indexes",
+      "data_zips",
+      "cards",
+      "sheets",
+      "games",
+    ]
 }
 
 pub fn a_version_one_database_gets_the_later_stores_test() {
   assert storage.stores_to_create(from: 1)
-    == ["lists", "data_indexes", "data_zips", "cards"]
+    == ["lists", "data_indexes", "data_zips", "cards", "sheets", "games"]
 }
 
 pub fn a_version_two_database_gets_the_data_stores_test() {
   assert storage.stores_to_create(from: 2)
-    == ["data_indexes", "data_zips", "cards"]
+    == ["data_indexes", "data_zips", "cards", "sheets", "games"]
 }
 
 pub fn a_version_three_database_gets_the_cards_store_test() {
-  assert storage.stores_to_create(from: 3) == ["cards"]
+  assert storage.stores_to_create(from: 3) == ["cards", "sheets", "games"]
+}
+
+pub fn a_version_four_database_gets_the_sheets_and_games_test() {
+  assert storage.stores_to_create(from: 4) == ["sheets", "games"]
 }
 
 pub fn a_current_database_gets_no_store_test() {

@@ -217,7 +217,10 @@ pub fn a_backup_file_asks_before_anything_is_written_test() {
     "<main class=\"page\"><p class=\"version-line\">Version 2026.11.12.2041</p>",
   )
   assert string.contains(page, "<h1>Restore this backup?</h1>")
-  assert string.contains(page, "It holds 1 list, 1 game data set and 2 cards.")
+  assert string.contains(
+    page,
+    "It holds 1 list, 1 game data set, 2 cards, 1 score sheet and 1 game.",
+  )
   assert string.contains(page, "with version 2026.11.13.1542.")
   assert !string.contains(page, "About this device")
   // Leaving the screen closes the question.

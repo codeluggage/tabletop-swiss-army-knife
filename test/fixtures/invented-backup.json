@@ -2,7 +2,7 @@
   "format": "tabletop-backup",
   "made": "2026-11-13T15:42:00.000Z",
   "release": "2026.11.13.1542",
-  "schema": 4,
+  "schema": 5,
   "stores": {
     "meta": [{ "key": "first_opened", "json": 1762980000000 }],
     "lists": [
@@ -49,6 +49,57 @@
           "effect": "Leave a trail.",
           "place": { "set_id": "sys-picnic" },
           "edited": 1762980000000
+        }
+      }
+    ],
+    "sheets": [
+      {
+        "key": "sheet-picnic",
+        "json": {
+          "id": "sheet-picnic",
+          "name": "Sunday Picnic",
+          "rounds": 3,
+          "ask_first": true,
+          "counters": [{ "id": "acorns", "name": "Acorns", "start": 2, "gain_each_round": 1 }],
+          "items": [
+            { "id": "teatime", "name": "Teatime", "kind": "toggle", "points": 3 },
+            { "id": "teacups", "name": "Teacups", "kind": "count", "points_each": 2, "most": 3 },
+            { "id": "crumbs", "name": "Crumbs", "kind": "free" }
+          ],
+          "results": [{ "name": "Crumb Win", "lead_at_least": 1 }]
+        }
+      }
+    ],
+    "games": [
+      {
+        "key": "game-picnic",
+        "json": {
+          "id": "game-picnic",
+          "sheet": {
+            "id": "sheet-picnic",
+            "name": "Sunday Picnic",
+            "rounds": 3,
+            "ask_first": true,
+            "counters": [{ "id": "acorns", "name": "Acorns", "start": 2, "gain_each_round": 1 }],
+            "items": [
+              { "id": "teatime", "name": "Teatime", "kind": "toggle", "points": 3 },
+              { "id": "teacups", "name": "Teacups", "kind": "count", "points_each": 2, "most": 3 },
+              { "id": "crumbs", "name": "Crumbs", "kind": "free" }
+            ],
+            "results": [{ "name": "Crumb Win", "lead_at_least": 1 }]
+          },
+          "started": 1762980000000,
+          "players": ["Ada", "Bram"],
+          "list": { "id": "list-sunday", "name": "Sunday Picnic" },
+          "round": 2,
+          "first": [{ "round": 1, "player": 2 }],
+          "marks": [
+            { "mark": "spent", "player": 1, "round": 1, "id": "acorns", "value": 2 },
+            { "mark": "scored", "player": 1, "round": 1, "id": "teatime", "value": 1 },
+            { "mark": "scored", "player": 2, "round": 1, "id": "crumbs", "value": 4 }
+          ],
+          "note": "Rain at teatime",
+          "ended": null
         }
       }
     ]

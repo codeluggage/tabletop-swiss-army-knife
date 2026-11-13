@@ -12,8 +12,10 @@ import tabletop/backup.{
 }
 import tabletop/browser
 import tabletop/data
+import tabletop/score
 import tabletop/storage.{
-  BytesValue, Cards, DataIndexes, DataZips, JsonValue, Lists, Meta, Put,
+  BytesValue, Cards, DataIndexes, DataZips, Games, JsonValue, Lists, Meta, Put,
+  Sheets,
 }
 
 fn fixture() -> String {
@@ -22,14 +24,14 @@ fn fixture() -> String {
 }
 
 fn with_schema(text: String, schema: Int) -> String {
-  string.replace(text, "\"schema\": 4", "\"schema\": " <> int.to_string(schema))
+  string.replace(text, "\"schema\": 5", "\"schema\": " <> int.to_string(schema))
 }
 
 // --- Which stores a backup holds ---------------------------------------------
 
 pub fn every_store_says_how_it_goes_into_a_backup_test() {
   assert list.map(storage.stores(), backup.kind)
-    == [SomeKeys([]), Source, Source, Source, Source]
+    == [SomeKeys([]), Source, Source, Source, Source, Source, Source]
   // Nothing is made today, so every store is in the file, Meta with no key.
   assert backup.stores() == storage.stores()
   assert !list.contains(list.map(storage.stores(), backup.kind), Made)
@@ -59,7 +61,7 @@ fn a_backup() -> backup.Backup {
   Backup(
     made: "2026-11-13T15:42:00.000Z",
     release: "2026.11.13.1542",
-    schema: 4,
+    schema: 5,
     stores: [
       #(Meta, []),
       #(Lists, [#("list-sunday", JsonValue(list_record))]),
@@ -67,6 +69,8 @@ fn a_backup() -> backup.Backup {
       // Not UTF-8, and a length that base64 pads.
       #(DataZips, [#("sys-picnic", BytesValue(<<0, 255, 128, 1, 2>>))]),
       #(Cards, []),
+      #(Sheets, []),
+      #(Games, []),
     ],
   )
 }
@@ -78,42 +82,42 @@ pub fn a_backup_round_trips_with_json_and_bytes_test() {
     text,
     "{\"key\":\"sys-picnic\",\"base64\":\"AP+AAQI=\"}",
   )
-  assert backup.read(text, schema: 4) == Ok(a_backup())
+  assert backup.read(text, schema: 5) == Ok(a_backup())
 }
 
 pub fn a_file_of_another_format_is_not_a_backup_test() {
-  assert backup.read("{\"format\":\"something-else\"}", schema: 4)
+  assert backup.read("{\"format\":\"something-else\"}", schema: 5)
     == Error(NotABackup)
-  assert backup.read("{\"roster\":{}}", schema: 4) == Error(NotABackup)
-  assert backup.read("[1, 2]", schema: 4) == Error(NotABackup)
-  assert backup.read("not json", schema: 4) == Error(NotABackup)
+  assert backup.read("{\"roster\":{}}", schema: 5) == Error(NotABackup)
+  assert backup.read("[1, 2]", schema: 5) == Error(NotABackup)
+  assert backup.read("not json", schema: 5) == Error(NotABackup)
   let assert Ok(list) = simplifile.read("test/fixtures/invented-list.json")
-  assert backup.read(list, schema: 4) == Error(NotABackup)
+  assert backup.read(list, schema: 5) == Error(NotABackup)
 }
 
 pub fn a_backup_from_a_later_schema_is_refused_test() {
-  assert backup.read(with_schema(fixture(), 5), schema: 4) == Error(TooNew(5))
+  assert backup.read(with_schema(fixture(), 6), schema: 5) == Error(TooNew(6))
   // Refused before its stores are read, which this app may not know.
   let unknown =
     "{\"format\":\"tabletop-backup\",\"made\":\"\",\"release\":\"\",\"schema\":9,\"stores\":{\"maps\":[{\"shape\":1}]}}"
-  assert backup.read(unknown, schema: 4) == Error(TooNew(9))
+  assert backup.read(unknown, schema: 5) == Error(TooNew(9))
 }
 
 pub fn a_backup_from_an_earlier_schema_is_restored_test() {
-  let assert Ok(now) = backup.read(fixture(), schema: 4)
-  let assert Ok(earlier) = backup.read(with_schema(fixture(), 3), schema: 4)
+  let assert Ok(now) = backup.read(fixture(), schema: 5)
+  let assert Ok(earlier) = backup.read(with_schema(fixture(), 3), schema: 5)
   assert earlier.schema == 3
   assert earlier.stores == now.stores
   // A schema 3 app had no cards store, so its backup has none.
   let no_cards =
     "{\"format\":\"tabletop-backup\",\"made\":\"\",\"release\":\"\",\"schema\":3,\"stores\":{\"lists\":[]}}"
-  let assert Ok(old) = backup.read(no_cards, schema: 4)
+  let assert Ok(old) = backup.read(no_cards, schema: 5)
   assert list.key_find(old.stores, Cards) == Ok([])
 }
 
 pub fn a_broken_record_breaks_the_backup_test() {
   let broken = fn(from, to) {
-    backup.read(string.replace(fixture(), from, to), schema: 4)
+    backup.read(string.replace(fixture(), from, to), schema: 5)
   }
   assert broken("UEsFBgAAAAAAAAAAAAAAAAAAAAA=", "not base64!") == Error(Broken)
   assert broken("\"key\": \"card-pour\"", "\"id\": \"card-pour\"")
@@ -131,8 +135,9 @@ pub fn the_file_name_is_the_date_test() {
 // --- Restoring ----------------------------------------------------------------
 
 pub fn the_question_counts_what_the_backup_holds_test() {
-  let assert Ok(read) = backup.read(fixture(), schema: 4)
-  assert backup.holds(read) == "1 list, 1 game data set and 2 cards"
+  let assert Ok(read) = backup.read(fixture(), schema: 5)
+  assert backup.holds(read)
+    == "1 list, 1 game data set, 2 cards, 1 score sheet and 1 game"
   assert backup.holds(a_backup()) == "1 list"
   assert backup.holds(Backup(..a_backup(), stores: [])) == "nothing"
   let two_lists =
@@ -144,7 +149,7 @@ pub fn the_question_counts_what_the_backup_holds_test() {
 }
 
 pub fn a_restore_puts_every_record_and_no_device_key_test() {
-  let assert Ok(read) = backup.read(fixture(), schema: 4)
+  let assert Ok(read) = backup.read(fixture(), schema: 5)
   let writes = backup.writes(read)
   assert list.map(writes, fn(write) { #(write.store, write.key) })
     == [
@@ -153,6 +158,8 @@ pub fn a_restore_puts_every_record_and_no_device_key_test() {
       #(DataZips, "sys-picnic"),
       #(Cards, "card-pour"),
       #(Cards, "card-crumb"),
+      #(Sheets, "sheet-picnic"),
+      #(Games, "game-picnic"),
     ]
   assert list.all(writes, fn(write) {
     case write {
@@ -166,11 +173,24 @@ pub fn a_restored_index_is_built_again_from_its_zip_test() {
   // The index inside a data set's record is made from its zip. A restored
   // record whose index is older than the app's goes to the rebuild path, as
   // any older record does when the app opens.
-  let assert Ok(read) = backup.read(fixture(), schema: 4)
+  let assert Ok(read) = backup.read(fixture(), schema: 5)
   let assert Ok(Put(value: JsonValue(record), ..)) =
     list.find(backup.writes(read), fn(write) { write.store == DataIndexes })
   assert json.parse(json.to_string(record), data.record_decoder())
     == Ok(#("picnic.zip", 1_762_980_000_000, None))
+}
+
+pub fn a_restored_sheet_and_game_read_as_the_tracker_reads_them_test() {
+  let assert Ok(read) = backup.read(fixture(), schema: 5)
+  let record = fn(store) {
+    let assert Ok(Put(value: JsonValue(record), ..)) =
+      list.find(backup.writes(read), fn(write) { write.store == store })
+    json.to_string(record)
+  }
+  let assert Ok(sheet) = json.parse(record(Sheets), score.sheet_decoder())
+  let assert Ok(game) = json.parse(record(Games), score.game_decoder())
+  assert game.sheet == sheet
+  assert score.result(game) == "Bram: Crumb Win"
 }
 
 // --- Size ---------------------------------------------------------------------
@@ -223,10 +243,12 @@ pub fn a_large_backup_is_made_and_read_quickly_test() {
       #(DataIndexes, [#("sys-picnic", index)]),
       #(DataZips, [#("sys-picnic", BytesValue(zip))]),
       #(Cards, []),
+      #(Sheets, []),
+      #(Games, []),
     ])
   let text = backup.encode(big)
   let made = browser.now_ms()
-  let assert Ok(read) = backup.read(text, schema: 4)
+  let assert Ok(read) = backup.read(text, schema: 5)
   let done = browser.now_ms()
   assert read == big
   io.println(

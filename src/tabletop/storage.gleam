@@ -29,6 +29,12 @@ pub type Store {
   /// The cards the user typed in or imported, one record per card, keyed by
   /// a random id.
   Cards
+  /// The score sheets the user set up, one record per sheet, keyed by a
+  /// random id.
+  Sheets
+  /// The games kept on a score sheet, one record per game with its own copy
+  /// of the sheet, keyed by a random id.
+  Games
 }
 
 pub type Value {
@@ -65,6 +71,7 @@ const upgrades: List(List(Store)) = [
   [Lists],
   [DataIndexes, DataZips],
   [Cards],
+  [Sheets, Games],
 ]
 
 pub fn schema_version() -> Int {
@@ -92,6 +99,8 @@ pub fn store_name(store: Store) -> String {
     DataIndexes -> "data_indexes"
     DataZips -> "data_zips"
     Cards -> "cards"
+    Sheets -> "sheets"
+    Games -> "games"
   }
 }
 

@@ -62,6 +62,9 @@ pub fn kind(store: Store) -> Kind {
     storage.DataIndexes -> Source
     storage.DataZips -> Source
     storage.Cards -> Source
+    storage.Sheets -> Source
+    // A game holds its own copy of its sheet, so it is a source too.
+    storage.Games -> Source
   }
 }
 
@@ -199,7 +202,7 @@ pub fn writes(backup: Backup) -> List(Write) {
 }
 
 /// What a backup holds, in counts and plain words, such as
-/// `2 lists, 1 game data set and 14 cards`.
+/// `2 lists, 1 game data set, 14 cards, 1 score sheet and 3 games`.
 pub fn holds(backup: Backup) -> String {
   let count = fn(store, one, many) {
     case list.key_find(backup.stores, store) |> result.unwrap([]) {
@@ -213,6 +216,8 @@ pub fn holds(backup: Backup) -> String {
       count(storage.Lists, "list", "lists"),
       count(storage.DataIndexes, "game data set", "game data sets"),
       count(storage.Cards, "card", "cards"),
+      count(storage.Sheets, "score sheet", "score sheets"),
+      count(storage.Games, "game", "games"),
     ])
   case list.reverse(parts) {
     [] -> "nothing"
@@ -467,7 +472,7 @@ pub fn section(state: State) -> List(Element(Msg)) {
       html.h2([], [html.text("Backup")]),
       html.p([], [
         html.text(
-          "A backup file holds your lists, game data and cards: open it with Import a file to bring them back after this browser clears them, or to move them to another device.",
+          "A backup file holds your lists, game data, cards, score sheets and games: open it with Import a file to bring them back after this browser clears them, or to move them to another device.",
         ),
       ]),
       html.div([attribute.class("actions")], [
