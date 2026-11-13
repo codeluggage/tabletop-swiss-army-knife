@@ -1,4 +1,5 @@
 import gleam/list
+import gleam/option.{None, Some}
 import tabletop/versions
 
 const made = [
@@ -37,10 +38,20 @@ pub fn no_digits_match_nothing_test() {
 
 pub fn read_tags_keeps_versions_newest_first_test() {
   let text =
-    "2026.11.12.1542\tthe first change\nv1\tnot a version\n2026.11.13.0342\ta card's cost has its label\n\n"
+    "2026.11.12.1542\taaa\tthe first change\nv1\tbbb\tnot a version\n2026.11.13.0342\tccc\ta card's cost has its label\n\n"
   assert versions.read_tags(text)
     == [
-      #("2026.11.13.0342", "a card's cost has its label"),
-      #("2026.11.12.1542", "the first change"),
+      #("2026.11.13.0342", Some("a card's cost has its label")),
+      #("2026.11.12.1542", Some("the first change")),
+    ]
+}
+
+pub fn read_tags_leaves_a_merge_to_the_commit_under_it_test() {
+  let text =
+    "2026.11.13.1542\taaa bbb\tMerge remote-tracking branch 'origin/main'\n2026.11.13.1342\t\tthe first change\n"
+  assert versions.read_tags(text)
+    == [
+      #("2026.11.13.1542", None),
+      #("2026.11.13.1342", Some("the first change")),
     ]
 }

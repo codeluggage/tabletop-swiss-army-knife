@@ -185,7 +185,7 @@ The person you work for plays tabletop games and is not a developer. They write 
 
 1. Find the version the person means with the versions command.
 2. Find the commits that made the change, with `git log`.
-3. Run `git revert --no-edit <commit>` on those commits, newest first. Then follow "Make a change live" from step 4.
+3. Run `git revert --no-edit <commit>` on those commits, newest first. Skip a commit whose message starts with "Merge", and never revert it. Then follow "Make a change live" from step 4.
 4. Leave `upgrades` in `src/tabletop/storage.gleam` as it is, even when the change you undo added a store. Remove the screens and keep the store. A phone that already has the store cannot open an app that has fewer.
 
 #### Always

@@ -1,5 +1,6 @@
 //// `gleam run -m tabletop/versions [digits]` lists the versions that went
-//// live, newest first, each with the first line of what changed. With digits
+//// live, newest first, each with the first line of what changed: the newest
+//// commit under its tag that is not a merge. With digits
 //// it lists the versions that match what a person said: `1542` is a version
 //// made at 15:42, and `342` one made at 03:42 or 15:42.
 
@@ -7,6 +8,7 @@ import gleam/int
 import gleam/io
 import gleam/javascript/array.{type Array}
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import tabletop/version
@@ -23,7 +25,7 @@ pub fn main() -> Nil {
     run("git", [
       "for-each-ref",
       "refs/tags",
-      "--format=%(refname:short)%09%(subject)",
+      "--format=%(refname:short)%09%(parent)%09%(subject)",
     ])
   case listed, string.concat(array.to_list(arguments())) {
     Ok(#(0, out, _)), said -> {
@@ -47,13 +49,19 @@ pub fn main() -> Nil {
 }
 
 /// The versions among the tags, newest first, from lines of
-/// `<tag>\t<first line of its commit message>`. Other tags are left out.
-pub fn read_tags(text: String) -> List(#(String, String)) {
+/// `<tag>\t<its commit's parents>\t<first line of its commit message>`, each
+/// with that line, or None when the commit is a merge, which has two parents
+/// and says nothing about what changed. Other tags are left out.
+pub fn read_tags(text: String) -> List(#(String, Option(String))) {
   string.split(text, "\n")
   |> list.filter_map(fn(line) {
-    use #(tag, subject) <- result.try(string.split_once(line, "\t"))
+    use #(tag, rest) <- result.try(string.split_once(line, "\t"))
+    use #(parents, subject) <- result.try(string.split_once(rest, "\t"))
     use _ <- result.map(version.parse(tag))
-    #(tag, subject)
+    case string.contains(string.trim(parents), " ") {
+      True -> #(tag, None)
+      False -> #(tag, Some(subject))
+    }
   })
   |> list.sort(fn(a, b) { string.compare(b.0, a.0) })
 }
@@ -90,8 +98,22 @@ fn digits(text: String) -> String {
   |> string.concat
 }
 
-fn print(versions: List(#(String, String))) -> Nil {
-  list.each(versions, fn(found) { io.println(found.0 <> "  " <> found.1) })
+fn print(versions: List(#(String, Option(String)))) -> Nil {
+  list.each(versions, fn(found) {
+    let changed = case found.1 {
+      Some(subject) -> subject
+      None -> newest_change(found.0)
+    }
+    io.println(found.0 <> "  " <> changed)
+  })
+}
+
+/// The first line of the newest commit under `tag` that is not a merge.
+fn newest_change(tag: String) -> String {
+  case run("git", ["log", "-1", "--no-merges", "--format=%s", tag]) {
+    Ok(#(0, out, _)) -> string.trim(out)
+    _ -> ""
+  }
 }
 
 @external(javascript, "./node_ffi.mjs", "run")
