@@ -405,11 +405,15 @@ pub fn view(model: Model) -> Element(Msg) {
   }
   html.main(
     [attribute.class("page")],
-    list.append(page, [
-      html.footer([attribute.class("version-line")], [
-        html.text("Version " <> model.running),
-      ]),
-      update_bar(model.update),
+    list.flatten([
+      // First on every screen, so the person sees it without scrolling.
+      [
+        html.p([attribute.class("version-line")], [
+          html.text("Version " <> model.running),
+        ]),
+      ],
+      page,
+      [update_bar(model.update)],
     ]),
   )
 }

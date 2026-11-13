@@ -499,10 +499,10 @@ dd {
 }
 
 .version-line {
-  margin-top: 3rem;
+  margin: 0 0 0.5rem;
   font-size: 0.8rem;
   color: var(--muted);
-  text-align: center;
+  text-align: right;
 }
 
 .update-bar {

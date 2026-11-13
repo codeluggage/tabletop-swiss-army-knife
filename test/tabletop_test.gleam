@@ -68,8 +68,9 @@ pub fn a_reload_in_progress_stays_in_progress_test() {
   assert fetched(model(Applying), release("2026.11.11.2041")) == Applying
 }
 
-pub fn every_screen_ends_with_the_version_test() {
-  let line = "<footer class=\"version-line\">Version 2026.11.12.2041</footer>"
+pub fn every_screen_starts_with_the_version_test() {
+  let line =
+    "<main class=\"page\"><p class=\"version-line\">Version 2026.11.12.2041</p>"
   let home = tabletop.view(model(UpToDate)) |> element.to_string
   assert string.contains(home, line)
   let list =
