@@ -5,7 +5,7 @@
 //// messages and screens in its own module, and the shell sends it the routes
 //// it owns. The list feature is `tabletop/lists`, the game data feature
 //// `tabletop/data`, the cards feature `tabletop/cards`, the backup feature
-//// `tabletop/backup`.
+//// `tabletop/backup`, the game tracker `tabletop/tracker`.
 
 import gleam/bit_array
 import gleam/bool
@@ -32,6 +32,7 @@ import tabletop/lists
 import tabletop/route.{type Route}
 import tabletop/sheet_view
 import tabletop/storage.{type Database, type Persistence, type StorageError}
+import tabletop/tracker
 import tabletop/version
 import tabletop/zip
 
@@ -68,6 +69,7 @@ pub type Model {
     data: data.State,
     cards: cards.State,
     backup: backup.State,
+    tracker: tracker.State,
     /// How far down each screen was when it was left, keyed by its hash.
     scroll: Dict(String, Float),
     update: Update,
@@ -110,6 +112,7 @@ pub type Msg {
   DataMsg(data.Msg)
   CardsMsg(cards.Msg)
   BackupMsg(backup.Msg)
+  TrackerMsg(tracker.Msg)
 }
 
 const first_opened_key = "first_opened"
@@ -128,6 +131,7 @@ pub fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       data: data.init(),
       cards: cards.init(),
       backup: backup.init(),
+      tracker: tracker.init(),
       scroll: dict.new(),
       update: UpToDate,
     )
@@ -209,6 +213,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           data: data.screen_changed(model.data),
           cards: cards.screen_changed(model.cards),
           backup: backup.screen_changed(model.backup),
+          tracker: tracker.screen_changed(model.tracker),
         )
         |> enter_data
       #(model, effect.batch([scroll_to(top), entered]))
@@ -259,6 +264,10 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     }
     CardsMsg(msg) ->
       cards.update(model.cards, msg, model.storage) |> from_cards(model)
+    TrackerMsg(msg) -> {
+      let #(tracker, done) = tracker.update(model.tracker, msg, model.storage)
+      #(Model(..model, tracker:), effect.map(done, TrackerMsg))
+    }
     BackupMsg(msg) -> {
       let #(model, done) =
         backup.update(model.backup, msg, model.storage) |> from_backup(model)
@@ -270,6 +279,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             lists: lists.init(),
             data: data.init(),
             cards: cards.init(),
+            tracker: tracker.init(),
           ),
           effect.batch([done, load_features(db)]),
         )
@@ -285,6 +295,7 @@ fn load_features(db: Result(Database, StorageError)) -> Effect(Msg) {
     lists.load(db) |> effect.map(ListsMsg),
     data.load(db) |> effect.map(DataMsg),
     cards.load(db) |> effect.map(CardsMsg),
+    tracker.load(db) |> effect.map(TrackerMsg),
   ])
 }
 
@@ -407,8 +418,12 @@ fn reload() -> Effect(Msg) {
 pub fn view(model: Model) -> Element(Msg) {
   let page = case model.route {
     route.Home -> home(model)
+    // The way back to a game that picked this list comes first.
     route.ListPage(list_id:) ->
-      lists.list_page(model.lists, list_id, data_links(model)) |> lists_view
+      list.append(
+        tracker.back_to_game(model.tracker, list_id) |> tracker_view,
+        lists.list_page(model.lists, list_id, data_links(model)) |> lists_view,
+      )
     route.UnitPage(list_id:, unit_id:) ->
       lists.unit_page(model.lists, list_id, unit_id, data_links(model))
       |> lists_view
@@ -452,6 +467,15 @@ pub fn view(model: Model) -> Element(Msg) {
       cards.card_page(model.cards, card_id) |> cards_view
     route.ImportCardsPage(place:) ->
       cards.import_page(model.cards, place) |> cards_view
+    route.SheetsPage -> tracker.sheets_page(model.tracker) |> tracker_view
+    route.SheetPage(sheet_id:) ->
+      tracker.sheet_page(model.tracker, sheet_id) |> tracker_view
+    route.GamesPage -> tracker.games_page(model.tracker) |> tracker_view
+    route.NewGamePage ->
+      tracker.new_game_page(model.tracker, lists.names(model.lists))
+      |> tracker_view
+    route.GamePage(game_id:) ->
+      tracker.game_page(model.tracker, game_id) |> tracker_view
   }
   html.main(
     [attribute.class("page")],
@@ -482,6 +506,10 @@ fn cards_view(elements: List(Element(cards.Msg))) -> List(Element(Msg)) {
 
 fn backup_view(elements: List(Element(backup.Msg))) -> List(Element(Msg)) {
   list.map(elements, element.map(_, BackupMsg))
+}
+
+fn tracker_view(elements: List(Element(tracker.Msg))) -> List(Element(Msg)) {
+  list.map(elements, element.map(_, TrackerMsg))
 }
 
 /// The list screens' links into game data and their cards. The list feature
@@ -553,6 +581,7 @@ fn home(model: Model) -> List(Element(Msg)) {
     data_view(data.status(model.data)),
     lists_view(lists.home(model.lists)),
     data_view(data.home(model.data)),
+    tracker_view(tracker.home(model.tracker)),
     backup_view(backup.section(model.backup)),
     [
       html.section([attribute.class("about")], [

@@ -1,7 +1,8 @@
 import gleam/list
 import tabletop/route.{
-  CardPage, CardsPage, CataloguePage, DataSetPage, Game, Home, ImportCardsPage,
-  ListPage, NewCardPage, Node, NodePage, RulePage, UnitPage,
+  CardPage, CardsPage, CataloguePage, DataSetPage, Game, GamePage, GamesPage,
+  Home, ImportCardsPage, ListPage, NewCardPage, NewGamePage, Node, NodePage,
+  RulePage, SheetPage, SheetsPage, UnitPage,
 }
 
 pub fn parse_reads_each_screen_test() {
@@ -79,6 +80,22 @@ pub fn a_place_whose_ids_need_encoding_round_trips_test() {
     == screens
 }
 
+pub fn the_tracker_screens_round_trip_test() {
+  let screens = [
+    #(SheetsPage, "#/sheets"),
+    #(SheetPage("s-1"), "#/sheet/s-1"),
+    #(GamesPage, "#/games"),
+    #(NewGamePage, "#/games/new"),
+    #(GamePage("g-2"), "#/game/g-2"),
+    // A game whose id is the word new is still a game.
+    #(GamePage("new"), "#/game/new"),
+  ]
+  assert list.map(screens, fn(screen) { route.to_hash(screen.0) })
+    == list.map(screens, fn(screen) { screen.1 })
+  assert list.map(screens, fn(screen) { route.parse(screen.1) })
+    == list.map(screens, fn(screen) { screen.0 })
+}
+
 pub fn unknown_hashes_are_home_test() {
   assert route.parse("#/nowhere") == Home
   assert route.parse("#/list") == Home
@@ -95,4 +112,9 @@ pub fn unknown_hashes_are_home_test() {
   assert route.parse("#/card/a/b") == Home
   assert route.parse("#/card/new/a/b") == Home
   assert route.parse("#/card") == Home
+  assert route.parse("#/sheet") == Home
+  assert route.parse("#/sheets/a") == Home
+  assert route.parse("#/game") == Home
+  assert route.parse("#/games/old") == Home
+  assert route.parse("#/game/a/b") == Home
 }

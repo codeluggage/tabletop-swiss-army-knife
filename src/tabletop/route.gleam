@@ -29,6 +29,16 @@ pub type Route {
   CardPage(card_id: String)
   /// `#/cards/import/<place>`: the import screen, after a file was chosen.
   ImportCardsPage(place: Place)
+  /// `#/sheets`: the score sheets.
+  SheetsPage
+  /// `#/sheet/<sheet id>`: one score sheet to edit.
+  SheetPage(sheet_id: String)
+  /// `#/games`: every game, newest first.
+  GamesPage
+  /// `#/games/new`: pick a sheet and the players, then start.
+  NewGamePage
+  /// `#/game/<game id>`: one game.
+  GamePage(game_id: String)
 }
 
 /// Where a card belongs: the whole game of a data set, or one node in it. In
@@ -74,6 +84,11 @@ pub fn parse(hash: String) -> Route {
     Ok(["card", "new", set_id, catalogue_id, node_id]) ->
       NewCardPage(Node(set_id:, catalogue_id:, node_id:))
     Ok(["card", card_id]) -> CardPage(card_id:)
+    Ok(["sheets"]) -> SheetsPage
+    Ok(["sheet", sheet_id]) -> SheetPage(sheet_id:)
+    Ok(["games"]) -> GamesPage
+    Ok(["games", "new"]) -> NewGamePage
+    Ok(["game", game_id]) -> GamePage(game_id:)
     _ -> Home
   }
 }
@@ -112,6 +127,11 @@ pub fn to_hash(route: Route) -> String {
     NewCardPage(place:) -> ["card", "new", ..place_parts(place)]
     CardPage(card_id:) -> ["card", card_id]
     ImportCardsPage(place:) -> ["cards", "import", ..place_parts(place)]
+    SheetsPage -> ["sheets"]
+    SheetPage(sheet_id:) -> ["sheet", sheet_id]
+    GamesPage -> ["games"]
+    NewGamePage -> ["games", "new"]
+    GamePage(game_id:) -> ["game", game_id]
   }
   "#/" <> { list.map(parts, uri.percent_encode) |> string.join("/") }
 }

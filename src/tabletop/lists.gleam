@@ -185,6 +185,15 @@ fn saved_lists(state: State) -> List(Saved) {
   }
 }
 
+/// The id and title of every list that can be read, newest first, for a
+/// picker in another feature.
+pub fn names(state: State) -> List(#(String, String)) {
+  saved_lists(state)
+  |> list.filter(fn(saved) { result.is_ok(saved.roster) })
+  |> list.sort(fn(a, b) { int.compare(b.imported, a.imported) })
+  |> list.map(fn(saved) { #(saved.id, title(saved)) })
+}
+
 /// A saved list is stored as its name, when it was imported, and the file's
 /// full text, unchanged, so a later version can read more from the same file.
 fn record_decoder() -> decode.Decoder(#(String, Int, String)) {

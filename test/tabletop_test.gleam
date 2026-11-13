@@ -7,14 +7,16 @@ import simplifile
 import tabletop.{
   type Model, Applying, Available, BackupKind, BackupMsg, CardsMsg, FileNotRead,
   FileRead, Flags, HashChanged, ListsMsg, Model, NeitherKind, NotAKnownKind,
-  TextKind, UpToDate, VersionFetched, ZipKind,
+  TextKind, TrackerMsg, UpToDate, VersionFetched, ZipKind,
 }
 import tabletop/backup
 import tabletop/cards
 import tabletop/lists
 import tabletop/roster
 import tabletop/route
+import tabletop/score_test
 import tabletop/storage
+import tabletop/tracker
 import tabletop/zip_writer.{File, Store}
 
 pub fn main() -> Nil {
@@ -79,6 +81,10 @@ pub fn every_screen_starts_with_the_version_test() {
     tabletop.view(Model(..model(UpToDate), route: route.ListPage("gone")))
     |> element.to_string
   assert string.contains(list, line)
+  let game =
+    tabletop.view(Model(..model(UpToDate), route: route.GamePage("gone")))
+    |> element.to_string
+  assert string.starts_with(game, line)
 }
 
 pub fn about_this_device_shows_the_version_and_commit_test() {
@@ -259,6 +265,34 @@ pub fn a_restore_has_every_feature_read_its_stores_again_test() {
   assert model.lists.lists == None
   assert model.data.sets == None
   assert model.cards.cards == None
+  assert model.tracker.sheets == None
+  assert model.tracker.games == None
+}
+
+pub fn the_home_screen_has_games_and_a_list_leads_back_to_its_game_test() {
+  let home = tabletop.view(model(UpToDate)) |> element.to_string
+  let assert [_, after_data] = string.split(home, "<h2>Game data</h2>")
+  let assert [_, after_games] = string.split(after_data, "<h2>Games</h2>")
+  assert string.contains(after_games, "<h2>Backup</h2>")
+  let #(model, _) =
+    tabletop.update(
+      model(UpToDate),
+      TrackerMsg(tracker.SheetsLoaded(Ok([score_test.picnic_sheet()]))),
+    )
+  let #(model, _) =
+    tabletop.update(
+      model,
+      TrackerMsg(
+        tracker.StartSubmitted([#("l1", "Sunday Picnic")], [
+          #("sheet", "sheet-picnic"),
+          #("list", "l1"),
+        ]),
+      ),
+    )
+  let page =
+    tabletop.view(Model(..model, route: route.ListPage("l1")))
+    |> element.to_string
+  assert string.contains(page, "Back to the game")
 }
 
 pub fn the_home_screen_has_a_backup_section_above_about_test() {
