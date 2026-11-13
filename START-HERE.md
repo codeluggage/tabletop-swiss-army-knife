@@ -87,7 +87,7 @@ The app shows its version at the top of every screen, such as 2026.11.13.1542. I
 
 - Every change is checked before it goes live. A failed check publishes nothing, so the app keeps working.
 - The project holds no game content: no rules text, stats, points or names. Your game data stays in your browser on your device. If you ask Codex to put game content into the code, it builds a screen where you add it yourself instead.
-- A backup file for your data comes soon.
+- Your lists, game data and cards live in the browser on your device, and a browser can clear them. The home screen has a "Backup" section: save a backup file now and then, and keep it somewhere safe. "Import a file" brings it back, on this device or another one.
 
 ## Good ways to ask
 
