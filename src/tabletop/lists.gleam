@@ -1,7 +1,8 @@
 //// The list feature: the lists saved on this device, importing a list file,
 //// deleting a list, and the list, unit and rule screens. The shell in
 //// `tabletop.gleam` holds its `State`, wraps its `Msg`, reads a chosen file
-//// and hands it to `import_file`, and sends it the list routes.
+//// and hands its text to `import_file`, sends it the list routes, and hands
+//// the list screens their links into game data.
 
 import gleam/dynamic/decode
 import gleam/int
@@ -42,11 +43,21 @@ pub type Saved {
 
 /// What went wrong with the last import or delete.
 pub type Problem {
-  FileNotRead(reason: String)
   NotAList(roster.FileError)
   NotSaved(StorageError)
   NotDeleted(StorageError)
   NoStorage
+}
+
+/// Links from a list into game data, which the shell makes. Each takes a
+/// force's catalogue id and a selection's entry ids, and gives a link or
+/// nothing: `entry` for a unit or a setting, `value` for a setting's chosen
+/// value.
+pub type DataLinks {
+  DataLinks(
+    entry: fn(String, List(String)) -> Option(String),
+    value: fn(String, List(String)) -> Option(String),
+  )
 }
 
 pub type Msg {
@@ -153,11 +164,6 @@ pub fn import_file(
 /// The shell started reading a chosen file: the last problem goes.
 pub fn file_chosen(state: State) -> State {
   State(..state, problem: None)
-}
-
-/// The shell could not read the chosen file.
-pub fn file_not_read(state: State, reason: String) -> State {
-  State(..state, problem: Some(FileNotRead(reason)))
 }
 
 /// The screen changed: the last problem and an open delete question go.
@@ -352,14 +358,18 @@ fn with_list(
 }
 
 /// The list screen: its settings, rules and units, per force.
-pub fn list_page(state: State, list_id: String) -> List(Element(Msg)) {
+pub fn list_page(
+  state: State,
+  list_id: String,
+  links: DataLinks,
+) -> List(Element(Msg)) {
   use saved, decoded <- with_list(state, list_id)
   let titled = list.length(decoded.forces) > 1
   [
     sheet_view.back_link(route.Home, "All lists"),
     html.h1([], [html.text(title(saved))]),
     sheet_view.costs(roster.totals(decoded)),
-    ..list.map(decoded.forces, force_section(saved.id, _, titled))
+    ..list.map(decoded.forces, force_section(saved.id, _, titled, links))
   ]
 }
 
@@ -367,6 +377,7 @@ fn force_section(
   list_id: String,
   force: roster.Force,
   titled: Bool,
+  links: DataLinks,
 ) -> Element(Msg) {
   let #(title, heading) = case titled {
     True -> #(
@@ -384,15 +395,25 @@ fn force_section(
       html.ul(
         [attribute.class("settings")],
         list.map(settings, fn(setting) {
-          let values = list.map(setting.selections, fn(value) { value.name })
+          let values =
+            list.map(setting.selections, fn(value) {
+              case links.value(force.catalogue_id, value.entry_ids) {
+                Some(href) ->
+                  html.a([attribute.href(href)], [html.text(value.name)])
+                None -> html.text(value.name)
+              }
+            })
           html.li([], [
             html.span([attribute.class("setting-name")], [
               html.text(setting.name),
             ]),
-            html.text(case values {
-              [] -> ""
-              _ -> ": " <> string.join(values, ", ")
-            }),
+            ..case values {
+              [] -> []
+              _ -> [
+                html.text(": "),
+                ..list.intersperse(values, html.text(", "))
+              ]
+            }
           ])
         }),
       )
@@ -439,6 +460,7 @@ pub fn unit_page(
   state: State,
   list_id: String,
   unit_id: String,
+  links: DataLinks,
 ) -> List(Element(Msg)) {
   use saved, decoded <- with_list(state, list_id)
   case roster.find_unit(decoded, unit_id) {
@@ -447,10 +469,25 @@ pub fn unit_page(
       let href = rule_href(saved.id, _)
       let text = sheet_view.rich_text(_, rule_links(decoded), href)
       let keywords = list.map(unit.categories, fn(category) { category.name })
+      let catalogue_id =
+        list.find(decoded.forces, fn(force) {
+          list.any(roster.units(force), fn(other) { other.id == unit_id })
+        })
+        |> result.map(fn(force) { force.catalogue_id })
+        |> result.unwrap("")
       list.flatten([
         [
           sheet_view.back_link(route.ListPage(saved.id), title(saved)),
           html.h1([], [html.text(unit.name)]),
+          case links.entry(catalogue_id, unit.entry_ids) {
+            Some(href) ->
+              html.p([], [
+                html.a([attribute.class("button"), attribute.href(href)], [
+                  html.text("Open in game data"),
+                ]),
+              ])
+            None -> element.none()
+          },
           sheet_view.costs(roster.unit_costs(unit)),
         ],
         list.map(
@@ -560,7 +597,6 @@ fn title(saved: Saved) -> String {
 
 fn describe_problem(problem: Problem) -> String {
   case problem {
-    FileNotRead(reason) -> "That file could not be read. " <> reason
     NotAList(roster.NotJson) ->
       "That file is not a list export. It is not JSON."
     NotAList(roster.NoRoster) ->

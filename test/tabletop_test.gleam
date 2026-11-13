@@ -2,12 +2,14 @@ import gleam/dict
 import gleam/option.{None, Some}
 import gleeunit
 import tabletop.{
-  type Model, Applying, Available, FileRead, Flags, HashChanged, ListsMsg, Model,
-  UpToDate, VersionFetched,
+  type Model, Applying, Available, FileNotRead, FileRead, Flags, HashChanged,
+  ListsMsg, Model, NeitherKind, NotAKnownKind, TextKind, UpToDate,
+  VersionFetched, ZipKind,
 }
 import tabletop/lists
 import tabletop/roster
 import tabletop/route
+import tabletop/zip_writer.{File, Store}
 
 pub fn main() -> Nil {
   gleeunit.main()
@@ -73,10 +75,42 @@ pub fn a_screen_change_closes_the_delete_question_test() {
   assert moved.lists.confirming == None
 }
 
-pub fn a_read_file_goes_to_the_lists_test() {
+fn a_zip() -> BitArray {
+  zip_writer.write("box", [File("a.json", <<"{}":utf8>>, Store)], "")
+}
+
+pub fn a_file_is_a_zip_text_or_neither_test() {
+  assert tabletop.file_kind(a_zip()) == ZipKind
+  assert tabletop.file_kind(<<"{\"roster\": {}}":utf8>>)
+    == TextKind("{\"roster\": {}}")
+  assert tabletop.file_kind(<<>>) == TextKind("")
+  assert tabletop.file_kind(<<0xff, 0xfe, 0x00>>) == NeitherKind
+}
+
+pub fn a_text_file_goes_to_the_lists_test() {
   let #(model, _) =
-    tabletop.update(model(UpToDate), FileRead(Ok(#("notes.txt", "hello"))))
+    tabletop.update(
+      model(UpToDate),
+      FileRead(Ok(#("notes.txt", <<"hello":utf8>>))),
+    )
   assert model.lists.problem == Some(lists.NotAList(roster.NotJson))
-  let #(model, _) = tabletop.update(model, FileRead(Error("gone")))
-  assert model.lists.problem == Some(lists.FileNotRead("gone"))
+  assert model.data.importing == None
+}
+
+pub fn a_zip_goes_to_the_data_test() {
+  let #(model, _) =
+    tabletop.update(model(UpToDate), FileRead(Ok(#("box.zip", a_zip()))))
+  assert model.lists.problem == None
+  let assert Some(job) = model.data.importing
+  assert job.file.name == "box.zip"
+}
+
+pub fn the_shell_owns_the_problems_of_the_file_itself_test() {
+  let #(model, _) = tabletop.update(model(UpToDate), FileRead(Error("gone")))
+  assert model.file_problem == Some(FileNotRead("gone"))
+  let #(model, _) =
+    tabletop.update(model, FileRead(Ok(#("photo.bin", <<0xff, 0xd8>>))))
+  assert model.file_problem == Some(NotAKnownKind)
+  assert model.lists.problem == None
+  assert model.data.problem == None
 }

@@ -59,9 +59,9 @@ pub fn manual_scroll_restoration() -> Nil
 @external(javascript, "./browser_ffi.mjs", "random_id")
 pub fn random_id() -> String
 
-/// The name and text of the file chosen in the file `input` element. Clears
+/// The name and bytes of the file chosen in the file `input` element. Clears
 /// the input, so choosing the same file again fires a change.
 @external(javascript, "./browser_ffi.mjs", "read_chosen_file")
 pub fn read_chosen_file(
   input: Dynamic,
-) -> Promise(Result(#(String, String), String))
+) -> Promise(Result(#(String, BitArray), String))

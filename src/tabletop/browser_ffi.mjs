@@ -1,6 +1,6 @@
 // Page-level browser calls for browser.gleam: the version stamped into the
 // page, the service worker, the clock. No decisions here; Gleam makes them.
-import { Result$Ok, Result$Error } from "../gleam.mjs";
+import { Result$Ok, Result$Error, BitArray$BitArray } from "../gleam.mjs";
 
 export function running_version() {
   return document.querySelector('meta[name="tabletop-version"]').content;
@@ -78,13 +78,13 @@ export function random_id() {
   return crypto.randomUUID();
 }
 
-// The file chosen in a file input: its name and text. Clears the input, so
+// The file chosen in a file input: its name and bytes. Clears the input, so
 // choosing the same file again still fires a change.
 export async function read_chosen_file(input) {
   try {
     const file = input.files[0];
     input.value = "";
-    return Result$Ok([file.name, await file.text()]);
+    return Result$Ok([file.name, BitArray$BitArray(new Uint8Array(await file.arrayBuffer()))]);
   } catch (error) {
     return Result$Error(String(error));
   }

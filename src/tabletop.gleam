@@ -1,10 +1,12 @@
 //// Tabletop: the shell around the features. Opens storage, asks the browser
 //// to keep it, records the first visit, follows the screen in the URL hash,
-//// reads a chosen file, and offers a reload when a newer build is out. Each
-//// feature keeps its own state, messages and screens in its own module, and
-//// the shell sends it the routes it owns. The list feature is
-//// `tabletop/lists`.
+//// reads a chosen file and sends it to the feature for its kind, and offers a
+//// reload when a newer build is out. Each feature keeps its own state,
+//// messages and screens in its own module, and the shell sends it the routes
+//// it owns. The list feature is `tabletop/lists`, the game data feature
+//// `tabletop/data`.
 
+import gleam/bit_array
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
@@ -20,12 +22,14 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import tabletop/browser
+import tabletop/data
 import tabletop/effects
 import tabletop/lists
 import tabletop/route.{type Route}
 import tabletop/sheet_view
 import tabletop/storage.{type Database, type Persistence, type StorageError}
 import tabletop/version
+import tabletop/zip
 
 pub fn main() -> Nil {
   let flags =
@@ -48,7 +52,10 @@ pub type Model {
     storage: Option(Result(Database, StorageError)),
     persistence: Option(Persistence),
     first_opened: Option(Result(Int, StorageError)),
+    /// What went wrong with the last chosen file itself.
+    file_problem: Option(FileProblem),
     lists: lists.State,
+    data: data.State,
     /// How far down each screen was when it was left, keyed by its hash.
     scroll: Dict(String, Float),
     update: Update,
@@ -59,6 +66,18 @@ pub type Update {
   UpToDate
   Available
   Applying
+}
+
+/// What a chosen file is, from its bytes.
+pub type FileKind {
+  ZipKind
+  TextKind(String)
+  NeitherKind
+}
+
+pub type FileProblem {
+  FileNotRead(reason: String)
+  NotAKnownKind
 }
 
 pub type Msg {
@@ -72,8 +91,9 @@ pub type Msg {
   ControllerChanged
   HashChanged(hash: String, left_at: Float)
   FileChosen(input: Dynamic)
-  FileRead(Result(#(String, String), String))
+  FileRead(Result(#(String, BitArray), String))
   ListsMsg(lists.Msg)
+  DataMsg(data.Msg)
 }
 
 const first_opened_key = "first_opened"
@@ -86,7 +106,9 @@ pub fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       storage: None,
       persistence: None,
       first_opened: None,
+      file_problem: None,
       lists: lists.init(),
+      data: data.init(),
       scroll: dict.new(),
       update: UpToDate,
     )
@@ -108,6 +130,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       effect.batch([
         effects.from_promise(fn() { load_first_opened(db) }, FirstOpenedLoaded),
         lists.load(Ok(db)) |> effect.map(ListsMsg),
+        data.load(Ok(db)) |> effect.map(DataMsg),
       ]),
     )
     StorageOpened(Error(error)) -> #(
@@ -116,7 +139,10 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         storage: Some(Error(error)),
         first_opened: Some(Error(error)),
       ),
-      lists.load(Error(error)) |> effect.map(ListsMsg),
+      effect.batch([
+        lists.load(Error(error)) |> effect.map(ListsMsg),
+        data.load(Error(error)) |> effect.map(DataMsg),
+      ]),
     )
     FirstOpenedLoaded(result) -> #(
       Model(..model, first_opened: Some(result)),
@@ -154,30 +180,79 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         dict.insert(model.scroll, route.to_hash(model.route), left_at)
       let next = route.parse(hash)
       let top = dict.get(scroll, route.to_hash(next)) |> result.unwrap(0.0)
-      #(
+      let #(model, entered) =
         Model(
           ..model,
           route: next,
           scroll:,
+          file_problem: None,
           lists: lists.screen_changed(model.lists),
-        ),
-        scroll_to(top),
-      )
+          data: data.screen_changed(model.data),
+        )
+        |> enter_data
+      #(model, effect.batch([scroll_to(top), entered]))
     }
     FileChosen(input:) -> #(
-      Model(..model, lists: lists.file_chosen(model.lists)),
+      Model(
+        ..model,
+        file_problem: None,
+        lists: lists.file_chosen(model.lists),
+        data: data.file_chosen(model.data),
+      ),
       effects.from_promise(fn() { browser.read_chosen_file(input) }, FileRead),
     )
     FileRead(Error(reason)) -> #(
-      Model(..model, lists: lists.file_not_read(model.lists, reason)),
+      Model(..model, file_problem: Some(FileNotRead(reason))),
       effect.none(),
     )
-    FileRead(Ok(#(file_name, text))) ->
-      lists.import_file(model.lists, model.storage, file_name, text)
-      |> from_lists(model)
+    FileRead(Ok(#(file_name, bytes))) ->
+      case file_kind(bytes) {
+        ZipKind ->
+          data.import_zip(model.data, file_name, bytes) |> from_data(model)
+        TextKind(text) ->
+          lists.import_file(model.lists, model.storage, file_name, text)
+          |> from_lists(model)
+        NeitherKind -> #(
+          Model(..model, file_problem: Some(NotAKnownKind)),
+          effect.none(),
+        )
+      }
     ListsMsg(msg) ->
       lists.update(model.lists, msg, model.storage) |> from_lists(model)
+    DataMsg(msg) -> {
+      let #(model, done) =
+        data.update(model.data, msg, model.storage) |> from_data(model)
+      // A reload on a node screen opens its scope once the data sets are in.
+      case msg {
+        data.SetsLoaded(_) | data.SetSaved(_) -> {
+          let #(model, entered) = enter_data(model)
+          #(model, effect.batch([done, entered]))
+        }
+        _ -> #(model, done)
+      }
+    }
   }
+}
+
+/// A zip by its signature, text when the bytes are UTF-8, else neither.
+pub fn file_kind(bytes: BitArray) -> FileKind {
+  case zip.is_zip(bytes), bit_array.to_string(bytes) {
+    True, _ -> ZipKind
+    False, Ok(text) -> TextKind(text)
+    False, Error(Nil) -> NeitherKind
+  }
+}
+
+fn enter_data(model: Model) -> #(Model, Effect(Msg)) {
+  data.enter(model.data, model.route, model.storage) |> from_data(model)
+}
+
+/// The data feature's new state into the model, its effect into the app's.
+fn from_data(
+  step: #(data.State, Effect(data.Msg)),
+  model: Model,
+) -> #(Model, Effect(Msg)) {
+  #(Model(..model, data: step.0), effect.map(step.1, DataMsg))
 }
 
 /// The list feature's new state into the model, its effect into the app's.
@@ -256,13 +331,17 @@ pub fn view(model: Model) -> Element(Msg) {
   let page = case model.route {
     route.Home -> home(model)
     route.ListPage(list_id:) ->
-      lists.list_page(model.lists, list_id) |> lists_view
+      lists.list_page(model.lists, list_id, data_links(model)) |> lists_view
     route.UnitPage(list_id:, unit_id:) ->
-      lists.unit_page(model.lists, list_id, unit_id) |> lists_view
+      lists.unit_page(model.lists, list_id, unit_id, data_links(model))
+      |> lists_view
     route.RulePage(list_id:, rule_name:) ->
       lists.rule_page(model.lists, list_id, rule_name) |> lists_view
-    route.DataSetPage(..) | route.CataloguePage(..) | route.NodePage(..) ->
-      home(model)
+    route.DataSetPage(set_id:) -> data.set_page(model.data, set_id) |> data_view
+    route.CataloguePage(set_id:, catalogue_id:) ->
+      data.catalogue_page(model.data, set_id, catalogue_id) |> data_view
+    route.NodePage(set_id:, catalogue_id:, node_id:) ->
+      data.node_page(model.data, set_id, catalogue_id, node_id) |> data_view
   }
   html.main(
     [attribute.class("page")],
@@ -274,6 +353,23 @@ fn lists_view(elements: List(Element(lists.Msg))) -> List(Element(Msg)) {
   list.map(elements, element.map(_, ListsMsg))
 }
 
+fn data_view(elements: List(Element(data.Msg))) -> List(Element(Msg)) {
+  list.map(elements, element.map(_, DataMsg))
+}
+
+/// The list screens' links into game data. The list feature never sees the
+/// data feature.
+fn data_links(model: Model) -> lists.DataLinks {
+  lists.DataLinks(
+    entry: fn(catalogue_id, entry_ids) {
+      data.entry_href(model.data, catalogue_id, entry_ids)
+    },
+    value: fn(catalogue_id, entry_ids) {
+      data.value_href(model.data, catalogue_id, entry_ids)
+    },
+  )
+}
+
 fn home(model: Model) -> List(Element(Msg)) {
   list.flatten([
     [
@@ -283,7 +379,10 @@ fn home(model: Model) -> List(Element(Msg)) {
           attribute.type_("file"),
           attribute.id("import-file"),
           attribute.class("visually-hidden"),
-          attribute.accept([".json", "application/json"]),
+          attribute.accept([
+            ".json", ".zip", "application/json", "application/zip",
+          ]),
+          attribute.disabled(data.importing(model.data)),
           event.on(
             "change",
             decode.at(["target"], decode.dynamic) |> decode.map(FileChosen),
@@ -291,13 +390,23 @@ fn home(model: Model) -> List(Element(Msg)) {
         ]),
         html.label(
           [attribute.for("import-file"), attribute.class("button big")],
-          [
-            html.text("Import a list"),
-          ],
+          [html.text("Import a file")],
         ),
+        html.p([attribute.class("note")], [
+          html.text("A list exported as JSON, or game data as one zip file."),
+        ]),
       ]),
+      case model.file_problem {
+        None -> element.none()
+        Some(problem) ->
+          html.p([attribute.class("problem"), attribute.role("alert")], [
+            html.text(describe_file_problem(problem)),
+          ])
+      },
     ],
+    data_view(data.status(model.data)),
     lists_view(lists.home(model.lists)),
+    data_view(data.home(model.data)),
     [
       html.section([attribute.class("about")], [
         html.h2([], [html.text("About this device")]),
@@ -313,6 +422,13 @@ fn home(model: Model) -> List(Element(Msg)) {
       ]),
     ],
   ])
+}
+
+fn describe_file_problem(problem: FileProblem) -> String {
+  case problem {
+    FileNotRead(reason) -> "That file could not be read. " <> reason
+    NotAKnownKind -> "That file is neither a JSON list nor a zip file."
+  }
 }
 
 fn fact(term: String, detail: String) -> Element(Msg) {
