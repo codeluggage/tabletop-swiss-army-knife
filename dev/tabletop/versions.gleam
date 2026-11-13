@@ -1,6 +1,7 @@
 //// `gleam run -m tabletop/versions [digits]` lists the versions that went
 //// live, newest first, each with the first line of what changed: the newest
-//// commit under its tag that is not a merge. With digits
+//// commit under its tag that is not a merge and not a `publish again`. With
+//// digits
 //// it lists the versions that match what a person said: `1542` is a version
 //// made at 15:42, and `342` one made at 03:42 or 15:42.
 
@@ -11,6 +12,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import tabletop/publish
 import tabletop/version
 
 pub fn main() -> Nil {
@@ -50,15 +52,18 @@ pub fn main() -> Nil {
 
 /// The versions among the tags, newest first, from lines of
 /// `<tag>\t<its commit's parents>\t<first line of its commit message>`, each
-/// with that line, or None when the commit is a merge, which has two parents
-/// and says nothing about what changed. Other tags are left out.
+/// with that line, or None when the commit says nothing about what changed:
+/// a merge, which has two parents, or the empty commit publish makes to send
+/// the same work once more. Other tags are left out.
 pub fn read_tags(text: String) -> List(#(String, Option(String))) {
   string.split(text, "\n")
   |> list.filter_map(fn(line) {
     use #(tag, rest) <- result.try(string.split_once(line, "\t"))
     use #(parents, subject) <- result.try(string.split_once(rest, "\t"))
     use _ <- result.map(version.parse(tag))
-    case string.contains(string.trim(parents), " ") {
+    case
+      string.contains(string.trim(parents), " ") || subject == publish.again
+    {
       True -> #(tag, None)
       False -> #(tag, Some(subject))
     }
@@ -108,9 +113,12 @@ fn print(versions: List(#(String, Option(String)))) -> Nil {
   })
 }
 
-/// The first line of the newest commit under `tag` that is not a merge.
+/// The first line of the newest commit under `tag` that is not a merge and
+/// not a `publish again`.
 fn newest_change(tag: String) -> String {
-  case run("git", ["log", "-1", "--no-merges", "--format=%s", tag]) {
+  let skip = "--grep=^" <> publish.again <> "$"
+  let args = ["log", "-1", "--no-merges", "--invert-grep", skip, "--format=%s"]
+  case run("git", list.append(args, [tag])) {
     Ok(#(0, out, _)) -> string.trim(out)
     _ -> ""
   }

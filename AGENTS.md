@@ -186,7 +186,7 @@ The person you work for plays tabletop games and is not a developer. They write 
 
 1. Find the version the person means with the versions command.
 2. Find the commits that made the change, with `git log`.
-3. Run `git revert --no-edit <commit>` on those commits, newest first. Skip a commit whose message starts with "Merge", and never revert it. Then follow "Make a change live" from step 4.
+3. Run `git revert --no-edit <commit>` on those commits, newest first. Skip a commit whose message starts with "Merge", and never revert it. Skip a commit named `publish again` the same way: it is empty, and `git revert` stops on it. Then follow "Make a change live" from step 4.
 4. Leave `upgrades` in `src/tabletop/storage.gleam` as it is, even when the change you undo added a store. Remove the screens and keep the store. A phone that already has the store cannot open an app that has fewer.
 
 #### Always
@@ -208,7 +208,7 @@ The same commands on Windows, macOS and Linux, with only Git, Gleam and Node ins
 | `gleam run -m tabletop/serve [port]` | serve `dist/` on localhost, port 8080 unless given |
 | `gleam format src test dev` | format |
 | `gleam run -m tabletop/publish` | take the saved work on `main` to the live site, wait until it is live, and print which version is live |
-| `gleam run -m tabletop/versions [digits]` | the ten newest versions that went live, each with the first line of its newest commit that is not a merge; with digits, only the ones that match, such as `1542` |
+| `gleam run -m tabletop/versions [digits]` | the ten newest versions that went live, each with the first line of its newest commit that is not a merge or a `publish again`; with digits, only the ones that match, such as `1542` |
 | `gleam run -m tabletop/live_check` | after a build: may `dist/` replace the live site? Exits 1 with the reason when it may not |
 
 The build stamps a version, the minute of the build on the London clock such as `2026.11.13.1542`, into `index.html`, `version.json` and the service worker's cache name, and the short commit into `index.html`. The app shows the version at the top of every screen, and the commit in "About this device". `version.json` holds `release` (the version), `commit`, `schema` (the storage schema version) and `version`. `version` is the old stamp, `<UTC date>.<UTC time>.<short commit>` such as `2026-11-13.154207.776d09c`. It stays because an app installed before versions reads only that key to offer its Reload bar. No new code reads it. The build copies only the compiled modules the app imports, found by following imports from `tabletop/tabletop.mjs`, and lists them for the service worker to keep offline.
@@ -240,7 +240,7 @@ The build stamps a version, the minute of the build on the London clock such as 
 - `web/` - the static shell: `index.html`, `manifest.webmanifest`, `sw.js`, `style.css`, `icons/`. `__VERSION__` and `__FILES__` are placeholders the build replaces.
 - `dev/tabletop/build.gleam`, `serve.gleam` + `node_ffi.mjs` - the build and serve commands, run on Node.
 - `dev/tabletop/publish.gleam` - the publish command: take in GitHub's `main`, run the checks and the build, ask the live site with the live check, push, and wait for the deploy run. After a failed run, run the checks here or send the same work once more. Then wait until the live `version.json` shows the commit, and look for its version tag. With nothing to send, it only waits. It asks GitHub through `gh` when `gh` is signed in. Every message it prints is in `say`.
-- `dev/tabletop/versions.gleam` - the versions command: the version tags, each with the first line of the newest commit under it that is not a merge, and which ones match the digits a person says.
+- `dev/tabletop/versions.gleam` - the versions command: the version tags, each with the first line of the newest commit under it that is not a merge or a `publish again`, and which ones match the digits a person says.
 - `dev/tabletop/live_check.gleam` - the live check: may the version in `dist/version.json` replace the live one.
 - `dev/tabletop/site.gleam` - the GitHub repository from the `origin` remote, the live site's address, and the live `version.json`.
 - `.github/workflows/deploy.yml` - on a push to `main`: check, test, build, live check, deploy to GitHub Pages, then tag the commit with its version. A pull request runs only the check and the tests.

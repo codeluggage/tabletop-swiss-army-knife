@@ -55,3 +55,13 @@ pub fn read_tags_leaves_a_merge_to_the_commit_under_it_test() {
       #("2026.11.13.1342", Some("the first change")),
     ]
 }
+
+pub fn read_tags_leaves_a_send_once_more_to_the_commit_under_it_test() {
+  let text =
+    "2026.11.13.1542\taaa\tpublish again\n2026.11.13.1342\tbbb\tpublish again with a card\n"
+  assert versions.read_tags(text)
+    == [
+      #("2026.11.13.1542", None),
+      #("2026.11.13.1342", Some("publish again with a card")),
+    ]
+}
