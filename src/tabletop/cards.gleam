@@ -42,6 +42,9 @@ pub type Card {
     target: String,
     effect: String,
     place: Place,
+    /// When it was last saved, in milliseconds since 1970 UTC, so a merge of
+    /// two copies can keep the newer one.
+    edited: Int,
   )
 }
 
@@ -149,6 +152,7 @@ pub fn update(
               target: value(Target),
               effect: value(Effect),
               place:,
+              edited: 0,
             )
           }
           #(
@@ -338,6 +342,7 @@ pub fn import_cards(
             target: value(Target),
             effect: value(Effect),
             place: pending.place,
+            edited: 0,
           ))
       }
     })
@@ -352,10 +357,13 @@ pub fn writes(cards: List(Card)) -> List(storage.Write) {
   storage.Put(storage.Cards, card.id, storage.JsonValue(encode(card)))
 }
 
+/// Every save stamps the cards with the clock.
 fn save(
   db: Database,
   cards: List(Card),
 ) -> Promise(Result(List(Card), StorageError)) {
+  let edited = browser.now_ms()
+  let cards = list.map(cards, fn(card) { Card(..card, edited:) })
   storage.write(db, writes(cards)) |> promise.map(result.replace(_, cards))
 }
 
@@ -375,6 +383,7 @@ fn encode(card: Card) -> json.Json {
     #("target", json.string(card.target)),
     #("effect", json.string(card.effect)),
     #("place", json.object(place)),
+    #("edited", json.int(card.edited)),
   ])
 }
 
@@ -386,8 +395,9 @@ fn record_decoder() -> decode.Decoder(fn(String) -> Card) {
   use target <- decode.field("target", decode.string)
   use effect <- decode.field("effect", decode.string)
   use place <- decode.field("place", place_decoder())
+  use edited <- decode.field("edited", decode.int)
   decode.success(fn(id) {
-    Card(id:, name:, cost:, when:, target:, effect:, place:)
+    Card(id:, name:, cost:, when:, target:, effect:, place:, edited:)
   })
 }
 
@@ -765,7 +775,16 @@ fn problem_view(state: State) -> Element(msg) {
 /// The screen for a new card in `place`.
 pub fn new_card_page(state: State, place: Place) -> List(Element(Msg)) {
   let card =
-    Card(id: "", name: "", cost: "", when: "", target: "", effect: "", place:)
+    Card(
+      id: "",
+      name: "",
+      cost: "",
+      when: "",
+      target: "",
+      effect: "",
+      place:,
+      edited: 0,
+    )
   form_page(state, "New card", card, None)
 }
 

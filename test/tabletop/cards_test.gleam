@@ -16,7 +16,7 @@ import tabletop/storage
 import tabletop/text
 
 fn card(id: String, name: String, target: String, place: route.Place) -> Card {
-  Card(id:, name:, cost: "", when: "", target:, effect: "", place:)
+  Card(id:, name:, cost: "", when: "", target:, effect: "", place:, edited: 0)
 }
 
 fn loaded(saved: List(Card)) -> cards.State {
@@ -66,6 +66,7 @@ pub fn editing_a_card_fills_the_form_test() {
       target: "One Teacup unit",
       effect: "It moves again.",
       place: Node("sys-picnic", "cat-teapot", "e-squad"),
+      edited: 0,
     )
   let page = render(cards.card_page(loaded([saved]), "c1"))
   assert string.contains(page, "value=\"Second Pour\"")
