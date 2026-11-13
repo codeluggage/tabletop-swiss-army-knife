@@ -10,9 +10,10 @@ import tabletop/build
 
 const skipped = [".git", "build", "dist", "local-data", "node_modules"]
 
+/// `tsv` and `txt` too: a card table the user exports is rules text.
 const data_extensions = [
-  "json", "xml", "csv", "yaml", "yml", "zip", "cat", "gst", "ros", "catz",
-  "gstz", "rosz",
+  "json", "xml", "csv", "tsv", "txt", "yaml", "yml", "zip", "cat", "gst", "ros",
+  "catz", "gstz", "rosz",
 ]
 
 /// Data files allowed outside test/fixtures/. The web manifest and Gleam's own
@@ -80,6 +81,8 @@ pub fn breaches_test() {
   assert breaches("json", 100) == []
   assert list.length(breaches("units.JSON", 100)) == 1
   assert list.length(breaches("web/lists/army.rosz", 100)) == 1
+  assert list.length(breaches("cards.tsv", 100)) == 1
+  assert list.length(breaches("notes/cards.txt", 100)) == 1
   assert list.length(breaches("web/icons/huge.png", 300_001)) == 1
   assert list.length(breaches("test/fixtures/huge.json", 300_001)) == 1
   assert list.length(breaches("data.csv", 300_001)) == 2
