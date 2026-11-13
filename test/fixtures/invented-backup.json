@@ -1,0 +1,56 @@
+{
+  "format": "tabletop-backup",
+  "made": "2026-11-13T15:42:00.000Z",
+  "release": "2026.11.13.1542",
+  "schema": 4,
+  "stores": {
+    "meta": [{ "key": "first_opened", "json": 1762980000000 }],
+    "lists": [
+      {
+        "key": "list-sunday",
+        "json": {
+          "name": "Sunday Picnic",
+          "imported": 1762980000000,
+          "file": "{\"roster\":{\"name\":\"Sunday Picnic\",\"gameSystemId\":\"sys-picnic\",\"forces\":[]}}"
+        }
+      }
+    ],
+    "data_indexes": [
+      {
+        "key": "sys-picnic",
+        "json": {
+          "file_name": "picnic.zip",
+          "imported": 1762980000000,
+          "index": { "version": 1 }
+        }
+      }
+    ],
+    "data_zips": [{ "key": "sys-picnic", "base64": "UEsFBgAAAAAAAAAAAAAAAAAAAAA=" }],
+    "cards": [
+      {
+        "key": "card-pour",
+        "json": {
+          "name": "Second Pour",
+          "cost": "1",
+          "when": "At teatime",
+          "target": "Kettle",
+          "effect": "Refill one cup.",
+          "place": { "set_id": "sys-picnic" },
+          "edited": 1762980000000
+        }
+      },
+      {
+        "key": "card-crumb",
+        "json": {
+          "name": "Crumb Trail",
+          "cost": "",
+          "when": "",
+          "target": "",
+          "effect": "Leave a trail.",
+          "place": { "set_id": "sys-picnic" },
+          "edited": 1762980000000
+        }
+      }
+    ]
+  }
+}
