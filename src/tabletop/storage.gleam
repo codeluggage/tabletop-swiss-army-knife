@@ -24,6 +24,9 @@ pub type Store {
   DataIndexes
   /// The zip of each data set, unchanged, under the same key as its index.
   DataZips
+  /// The cards the user typed in or imported, one record per card, keyed by
+  /// a random id.
+  Cards
 }
 
 pub type Value {
@@ -59,6 +62,7 @@ const upgrades: List(List(Store)) = [
   [Meta],
   [Lists],
   [DataIndexes, DataZips],
+  [Cards],
 ]
 
 pub fn schema_version() -> Int {
@@ -80,6 +84,7 @@ fn store_name(store: Store) -> String {
     Lists -> "lists"
     DataIndexes -> "data_indexes"
     DataZips -> "data_zips"
+    Cards -> "cards"
   }
 }
 
