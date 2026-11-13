@@ -1,0 +1,6 @@
+Name,COST,When,Effect,Notes
+Second Pour,1 sugar,"Your turn, after moving",Pick one Teacup unit. It may move again.,
+Lid Down,,Any time,"The ""Kettle"" unit ignores the next hit.
+Then it boils.",
+,2 sugar,Never,This row has no name.,
+Crumb Trail,1 sugar,End of turn,Leave a crumb.,extra
