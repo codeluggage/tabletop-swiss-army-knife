@@ -1,5 +1,6 @@
-//// The browser's IndexedDB behind promises of `Result`. Values go in and come
-//// out as JSON that Gleam encodes and decodes; the database only sees strings.
+//// The browser's IndexedDB behind promises of `Result`. A value goes in as
+//// JSON that Gleam encodes and decodes, which the database sees as a string,
+//// or as bytes.
 ////
 //// The schema is `upgrades`: step n creates the stores that schema version n
 //// adds. "Adding a store" in AGENTS.md says how to add one.
@@ -19,6 +20,21 @@ pub type Store {
   Meta
   /// Imported list files, one record per list, keyed by a random id.
   Lists
+  /// What the app keeps about each data set, keyed by its game system's id.
+  DataIndexes
+  /// The zip of each data set, unchanged, under the same key as its index.
+  DataZips
+}
+
+pub type Value {
+  JsonValue(json.Json)
+  BytesValue(BitArray)
+}
+
+/// One change in a `write`.
+pub type Write {
+  Put(store: Store, key: String, value: Value)
+  Remove(store: Store, key: String)
 }
 
 pub type StorageError {
@@ -39,7 +55,11 @@ pub type Persistence {
 const database_name = "tabletop"
 
 /// Oldest first. Step n moves a database from schema version n - 1 to n.
-const upgrades: List(List(Store)) = [[Meta], [Lists]]
+const upgrades: List(List(Store)) = [
+  [Meta],
+  [Lists],
+  [DataIndexes, DataZips],
+]
 
 pub fn schema_version() -> Int {
   list.length(upgrades)
@@ -58,6 +78,8 @@ fn store_name(store: Store) -> String {
   case store {
     Meta -> "meta"
     Lists -> "lists"
+    DataIndexes -> "data_indexes"
+    DataZips -> "data_zips"
   }
 }
 
@@ -80,6 +102,20 @@ pub fn get(
   })
 }
 
+/// `Ok(None)` when nothing is stored under `key`.
+pub fn get_bytes(
+  db: Database,
+  store: Store,
+  key: String,
+) -> Promise(Result(Option(BitArray), StorageError)) {
+  do_get(db, store_name(store), key)
+  |> promise.map(fn(raw) {
+    use raw <- result.try(result.map_error(raw, ReadFailed))
+    decode.run(raw, decode.optional(decode.bit_array))
+    |> result.replace_error(Undecodable(key))
+  })
+}
+
 /// Resolves once the write is committed.
 pub fn put(
   db: Database,
@@ -87,8 +123,45 @@ pub fn put(
   key: String,
   value: json.Json,
 ) -> Promise(Result(Nil, StorageError)) {
-  do_put(db, store_name(store), key, json.to_string(value))
-  |> promise.map(result.map_error(_, WriteFailed))
+  write(db, [Put(store, key, JsonValue(value))])
+}
+
+/// Every change in one transaction over the stores they name: all are saved
+/// or none. Resolves once the transaction is committed. The removes run
+/// before the puts.
+pub fn write(
+  db: Database,
+  writes: List(Write),
+) -> Promise(Result(Nil, StorageError)) {
+  commit(db, writes, WriteFailed)
+}
+
+fn commit(
+  db: Database,
+  writes: List(Write),
+  failed: fn(String) -> StorageError,
+) -> Promise(Result(Nil, StorageError)) {
+  let stores =
+    list.map(writes, fn(write) { store_name(write.store) }) |> list.unique
+  let puts =
+    list.filter_map(writes, fn(write) {
+      case write {
+        Put(store:, key:, value: JsonValue(value)) ->
+          Ok(#(store_name(store), key, dynamic.string(json.to_string(value))))
+        Put(store:, key:, value: BytesValue(bytes)) ->
+          Ok(#(store_name(store), key, stored_bytes(bytes)))
+        Remove(..) -> Error(Nil)
+      }
+    })
+  let removes =
+    list.filter_map(writes, fn(write) {
+      case write {
+        Remove(store:, key:) -> Ok(#(store_name(store), key))
+        Put(..) -> Error(Nil)
+      }
+    })
+  do_write(db, stores, puts, removes)
+  |> promise.map(result.map_error(_, failed))
 }
 
 /// Every record in `store` with its key, in key order. A record that does not
@@ -127,8 +200,7 @@ pub fn delete(
   store: Store,
   key: String,
 ) -> Promise(Result(Nil, StorageError)) {
-  do_delete(db, store_name(store), key)
-  |> promise.map(result.map_error(_, DeleteFailed))
+  commit(db, [Remove(store, key)], DeleteFailed)
 }
 
 pub fn persist() -> Promise(Persistence) {
@@ -170,23 +242,21 @@ fn do_get(
   key: String,
 ) -> Promise(Result(Dynamic, String))
 
-@external(javascript, "./storage_ffi.mjs", "put")
-fn do_put(
+/// `puts` are store, key and value, `removes` are store and key.
+@external(javascript, "./storage_ffi.mjs", "write")
+fn do_write(
   db: Database,
-  store: String,
-  key: String,
-  value: String,
+  stores: List(String),
+  puts: List(#(String, String, Dynamic)),
+  removes: List(#(String, String)),
 ) -> Promise(Result(Nil, String))
+
+/// A `Uint8Array` that holds a copy of exactly the bit array's bytes.
+@external(javascript, "./storage_ffi.mjs", "stored_bytes")
+fn stored_bytes(bytes: BitArray) -> Dynamic
 
 @external(javascript, "./storage_ffi.mjs", "get_all")
 fn do_get_all(db: Database, store: String) -> Promise(Result(Dynamic, String))
-
-@external(javascript, "./storage_ffi.mjs", "delete_")
-fn do_delete(
-  db: Database,
-  store: String,
-  key: String,
-) -> Promise(Result(Nil, String))
 
 @external(javascript, "./storage_ffi.mjs", "persist")
 fn do_persist() -> Promise(Result(Bool, String))

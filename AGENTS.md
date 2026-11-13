@@ -142,6 +142,7 @@ A test enforces the file half of this rule: `gleam test` fails when a data file 
 
 - All logic is Gleam. A `.mjs` FFI file exists only to call a browser API (storage, files, the offline cache), and each FFI function is a few lines with no decisions in it.
 - The browser is the only store. A change to what is saved raises the storage schema version and adds an upgrade step, so saved data from an older version still opens.
+- A record that is made from other data holds a version and is built again from that data, never migrated.
 - Paths in the static shell are relative, because the site is served from a sub-path.
 - The compiler cannot see the FFI files or `web/`. After a change there, run the app and look at it.
 

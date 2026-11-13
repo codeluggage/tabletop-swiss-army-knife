@@ -1,6 +1,6 @@
 // IndexedDB calls for storage.gleam. Every function resolves to a Gleam
-// Result and never rejects. Values are the JSON strings Gleam made.
-import { Result$Ok, Result$Error } from "../gleam.mjs";
+// Result and never rejects. Values are the JSON strings Gleam made, or bytes.
+import { Result$Ok, Result$Error, BitArray$BitArray$data } from "../gleam.mjs";
 
 async function attempt(run) {
   try {
@@ -33,13 +33,26 @@ export function get(db, store, key) {
   }));
 }
 
-export function put(db, store, key, value) {
+// One transaction: removes, then puts. All are committed or none.
+export function write(db, stores, puts, removes) {
   return attempt(() => new Promise((resolve) => {
-    const transaction = db.transaction(store, "readwrite");
-    transaction.objectStore(store).put(value, key);
+    const transaction = db.transaction([...stores], "readwrite");
     transaction.oncomplete = () => resolve(Result$Ok(undefined));
     transaction.onerror = transaction.onabort = () => resolve(Result$Error(String(transaction.error)));
+    try {
+      for (const [store, key] of removes) transaction.objectStore(store).delete(key);
+      for (const [store, key, value] of puts) transaction.objectStore(store).put(value, key);
+    } catch (error) {
+      transaction.abort();
+      throw error;
+    }
   }));
+}
+
+// A copy, so the store holds exactly these bytes and not a whole backing buffer.
+export function stored_bytes(bits) {
+  const view = BitArray$BitArray$data(bits);
+  return new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice();
 }
 
 // Resolves to [keys, values]: two arrays in the same key order.
@@ -51,15 +64,6 @@ export function get_all(db, store) {
     values.onsuccess = () => resolve(Result$Ok([keys.result, values.result]));
     keys.onerror = () => resolve(Result$Error(String(keys.error)));
     values.onerror = () => resolve(Result$Error(String(values.error)));
-  }));
-}
-
-export function delete_(db, store, key) {
-  return attempt(() => new Promise((resolve) => {
-    const transaction = db.transaction(store, "readwrite");
-    transaction.objectStore(store).delete(key);
-    transaction.oncomplete = () => resolve(Result$Ok(undefined));
-    transaction.onerror = transaction.onabort = () => resolve(Result$Error(String(transaction.error)));
   }));
 }
 
