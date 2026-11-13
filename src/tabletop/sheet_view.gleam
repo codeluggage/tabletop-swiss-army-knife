@@ -81,8 +81,8 @@ pub fn profile_group(
   }
 }
 
-/// Text with `**bold**` shown bold and each linked name as a link to
-/// `href(target)`.
+/// Text with `**bold**` and `^^keyword^^` shown bold and each linked name as
+/// a link to `href(target)`.
 pub fn rich_text(
   content: String,
   links: Links(target),

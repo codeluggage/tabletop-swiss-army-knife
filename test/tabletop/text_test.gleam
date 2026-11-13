@@ -66,6 +66,38 @@ pub fn a_name_in_bold_is_a_bold_link_test() {
     ]
 }
 
+pub fn keyword_markup_is_bold_without_its_carets_test() {
+  assert segments("a ^^Abc^^ b")
+    == [Text("a ", Regular), Text("Abc", Bold), Text(" b", Regular)]
+  // Two pairs in one text.
+  assert segments("^^Abc^^ and ^^Def^^.")
+    == [
+      Text("Abc", Bold),
+      Text(" and ", Regular),
+      Text("Def", Bold),
+      Text(".", Regular),
+    ]
+  // A lone marker stays as text.
+  assert segments("a ^^ b") == [Text("a ^^ b", Regular)]
+  assert segments("^^Abc^^ ^^ b") == [Text("Abc", Bold), Text(" ^^ b", Regular)]
+}
+
+pub fn a_rule_name_in_keyword_markup_is_a_bold_link_test() {
+  assert segments("use ^^Steam Vent^^ now")
+    == [
+      Text("use ", Regular),
+      rule("Steam Vent", Bold),
+      Text(" now", Regular),
+    ]
+}
+
+pub fn bold_and_keyword_markup_in_one_text_test() {
+  assert segments("**Abc** then ^^Glow 2^^")
+    == [Text("Abc", Bold), Text(" then ", Regular), rule("Glow 2", Bold)]
+  assert segments("**a ^^b^^ c**")
+    == [Text("a ", Bold), Text("b", Bold), Text(" c", Bold)]
+}
+
 pub fn text_with_no_rule_name_is_one_segment_test() {
   assert segments("plain words\nnew line")
     == [Text("plain words\nnew line", Regular)]

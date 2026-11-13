@@ -1,5 +1,6 @@
-//// Text to segments for the view: `**bold**` runs, and names that link to a
-//// target. Each feature picks what a link points at.
+//// Text to segments for the view: `**bold**` runs and `^^keyword^^` runs,
+//// both bold, and names that link to a target. Each feature picks what a
+//// link points at.
 
 import gleam/dict.{type Dict}
 import gleam/int
@@ -48,31 +49,44 @@ pub fn links(names: List(#(String, target))) -> Links(target) {
   |> Links
 }
 
-/// Split `text` into runs. `**...**` is bold. A name links where it stands in
-/// the text with a boundary on both sides: the start or end of the text, or a
-/// character that is not a letter or digit. Names match case and all, and at
-/// one place the longest name wins. Newlines stay in the text.
+/// Split `text` into runs. `**...**` and `^^...^^` are bold, and the
+/// markers are not shown. A name links where it stands in the text with a
+/// boundary on both sides: the start or end of the text, or a character that
+/// is not a letter or digit. Names match case and all, and at one place the
+/// longest name wins. Newlines stay in the text.
 pub fn segments(text: String, links: Links(target)) -> List(Segment(target)) {
-  text
-  |> string.split("**")
-  |> pair_bold_markers
-  |> list.index_map(fn(run, index) {
-    let weight = case int.is_odd(index) {
-      True -> Bold
-      False -> Regular
-    }
-    link_run(string.to_graphemes(run), True, [], [], weight, links)
+  bold_runs(text, "**", Regular)
+  |> list.flat_map(fn(run) { bold_runs(run.0, "^^", run.1) })
+  |> list.flat_map(fn(run) {
+    link_run(string.to_graphemes(run.0), True, [], [], run.1, links)
   })
-  |> list.flatten
 }
 
-/// A `**` with no partner is plain text: join the last two runs back up.
-fn pair_bold_markers(runs: List(String)) -> List(String) {
+/// The text split at each pair of `marker`: inside a pair is bold, outside
+/// is `weight`.
+fn bold_runs(
+  text: String,
+  marker: String,
+  weight: Weight,
+) -> List(#(String, Weight)) {
+  string.split(text, marker)
+  |> pair_markers(marker)
+  |> list.index_map(fn(run, index) {
+    case int.is_odd(index) {
+      True -> #(run, Bold)
+      False -> #(run, weight)
+    }
+  })
+}
+
+/// A marker with no partner is plain text: join the last two runs back up.
+fn pair_markers(runs: List(String), marker: String) -> List(String) {
   case int.is_even(list.length(runs)) {
     False -> runs
     True ->
       case list.reverse(runs) {
-        [last, before, ..rest] -> list.reverse([before <> "**" <> last, ..rest])
+        [last, before, ..rest] ->
+          list.reverse([before <> marker <> last, ..rest])
         _ -> runs
       }
   }
