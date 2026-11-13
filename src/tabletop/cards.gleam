@@ -826,7 +826,7 @@ fn form_page(
     ])
   }
   [
-    sheet_view.back_link(route.place_page(card.place), "Back"),
+    back_button(),
     html.h1([], [html.text(title)]),
     keyed.fragment([
       #(
@@ -856,6 +856,18 @@ fn form_page(
       ),
     ]),
   ]
+}
+
+/// Back to the screen the card or the import was opened from.
+fn back_button() -> Element(Msg) {
+  html.button(
+    [
+      attribute.type_("button"),
+      attribute.class("back"),
+      event.on_click(Cancelled),
+    ],
+    [sheet_view.arrow(), html.text("Back")],
+  )
 }
 
 fn delete_view(id: String, confirming: Bool) -> Element(Msg) {
@@ -898,7 +910,7 @@ fn delete_view(id: String, confirming: Bool) -> Element(Msg) {
 /// The import screen: a column for each field, a preview of the first three
 /// cards, and the import.
 pub fn import_page(state: State, place: Place) -> List(Element(Msg)) {
-  let back = sheet_view.back_link(route.place_page(place), "Back")
+  let back = back_button()
   case state.pending {
     Some(pending) if pending.place == place -> {
       let #(cards, skipped) = import_cards(pending, fn() { "" })
@@ -1019,7 +1031,7 @@ fn describe_problem(problem: Problem) -> String {
       <> sheet_view.describe_storage_error(error)
     FileNotRead(reason) -> "That file could not be read. " <> reason
     NotText ->
-      "That file is not text. Save the table as CSV or as tab-separated text."
+      "That file is not UTF-8 text. In a spreadsheet, save it as CSV UTF-8."
     NoRows -> "That file has no rows."
     NoStorage -> "Storage is not open on this device, so cards cannot change."
   }

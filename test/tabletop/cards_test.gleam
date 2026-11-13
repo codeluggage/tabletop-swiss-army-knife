@@ -70,7 +70,6 @@ pub fn editing_a_card_fills_the_form_test() {
   assert string.contains(page, ">Your turn</textarea>")
   assert string.contains(page, ">One Teacup unit</textarea>")
   assert string.contains(page, ">It moves again.</textarea>")
-  assert string.contains(page, "href=\"#/data/sys-picnic/cat-teapot/e-squad\"")
 }
 
 pub fn delete_asks_first_test() {
