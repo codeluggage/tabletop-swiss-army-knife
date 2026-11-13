@@ -4,7 +4,8 @@
 //// developer, so every message is one or two plain sentences.
 ////
 //// In order: on main with nothing unsaved; take in the changes on GitHub;
-//// the checks and the build; the live check against the live site; send the
+//// the checks and the build; the storage schema number against the live
+//// site; send the
 //// change to GitHub; wait for GitHub to publish it; wait for the live site
 //// to show it; look for its version tag. Each failure stops there, changes
 //// nothing further and says so. With nothing to send it only waits, so a
@@ -45,8 +46,6 @@ pub type Outcome {
   SameLines
   NotCombined
   CheckFailed(Check)
-  /// The live site has a version that is not earlier than the new one.
-  SameMinute
   /// The new build keeps saved data at a lower storage schema number than
   /// the live site.
   StepRemoved
@@ -170,10 +169,6 @@ pub fn say(outcome: Outcome) -> String {
       "The site could not be built"
       <> unpublished
       <> " Fix what the build says above and publish again."
-    SameMinute ->
-      "A version went live in this same minute"
-      <> unpublished
-      <> " Run this command again in one minute."
     StepRemoved ->
       "This change removes a storage step that phones already have"
       <> unpublished
@@ -220,13 +215,15 @@ fn check_name(check: Check) -> String {
   }
 }
 
-/// Whether a build may be sent, from the live check's verdict on it. When
-/// this computer cannot tell, the same check on GitHub decides.
+/// Whether a build may be sent, from the live check's verdict on it. Only a
+/// lower storage schema number stops it here. GitHub's own build stamped the
+/// live version, so this computer's clock says nothing true about whether
+/// the new one is later: the same check on GitHub decides, and a run that
+/// fails there is sent once more.
 pub fn may_send(verdict: Verdict) -> Result(Nil, Outcome) {
   case verdict {
-    NotLater(_) -> Error(SameMinute)
     OlderLayout(_) -> Error(StepRemoved)
-    MayGoLive(_) | CannotTell(_) -> Ok(Nil)
+    NotLater(_) | MayGoLive(_) | CannotTell(_) -> Ok(Nil)
   }
 }
 
@@ -451,7 +448,7 @@ fn run_checks() -> Result(Nil, Stop) {
 }
 
 /// The live check GitHub runs before it publishes, on the build in `dist/`,
-/// so a refusal is known before anything is sent.
+/// so a lower storage schema number is known before anything is sent.
 fn check_live(repository: Repository) -> Promise(Result(Nil, Stop)) {
   case live_check.read_built() {
     Error(reason) -> promise.resolve(Error(#(CheckFailed(Build), reason)))

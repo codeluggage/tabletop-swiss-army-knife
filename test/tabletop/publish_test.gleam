@@ -7,9 +7,8 @@ import tabletop/publish.{
   Behind, Build, Cancelled, CheckFailed, CheckHere, CouldNotRun, Failed,
   FailedAgain, FailedAt, FailedOnlyOnGitHub, FailedSomewhere, Format, GiveUp,
   Live, NoAddress, NoRun, NotCombined, NotOnMain, NotSent, NotShownYet, Passed,
-  Refused, RunNotStarted, RunTooSlow, Running, SameLines, SameMinute, SendAgain,
-  Sent, StatusUnreadable, StepRemoved, Tests, Types, Unreachable, Unsaved,
-  WentLive,
+  Refused, RunNotStarted, RunTooSlow, Running, SameLines, SendAgain, Sent,
+  StatusUnreadable, StepRemoved, Tests, Types, Unreachable, Unsaved, WentLive,
 }
 
 const git_words = [
@@ -36,7 +35,6 @@ pub fn every_failure_is_one_or_two_plain_sentences_test() {
     CheckFailed(Types),
     CheckFailed(Tests),
     CheckFailed(Build),
-    SameMinute,
     StepRemoved,
     NotSent,
     FailedOnlyOnGitHub(Types),
@@ -66,8 +64,6 @@ pub fn every_failure_is_one_or_two_plain_sentences_test() {
 pub fn the_sentences_say_what_happened_test() {
   assert publish.say(SameLines)
     == "This change and a change from another person touch the same lines, so nothing was published. Ask the person who helps with the project."
-  assert publish.say(SameMinute)
-    == "A version went live in this same minute, so nothing was published. Run this command again in one minute."
   assert publish.say(StepRemoved)
     == "This change removes a storage step that phones already have, so nothing was published. Put the step back in upgrades in src/tabletop/storage.gleam."
   assert publish.say(FailedOnlyOnGitHub(Tests))
@@ -88,11 +84,11 @@ pub fn the_last_lines_name_the_live_version_test() {
     <> closing
 }
 
-pub fn a_build_the_live_site_refuses_is_not_sent_test() {
-  assert publish.may_send(live_check.NotLater("")) == Error(SameMinute)
+pub fn only_a_lower_schema_is_not_sent_test() {
   assert publish.may_send(live_check.OlderLayout("")) == Error(StepRemoved)
   assert publish.may_send(live_check.MayGoLive("")) == Ok(Nil)
-  // GitHub runs the same check before it publishes.
+  // GitHub runs the same check before it publishes, with its own clock.
+  assert publish.may_send(live_check.NotLater("")) == Ok(Nil)
   assert publish.may_send(live_check.CannotTell("")) == Ok(Nil)
 }
 

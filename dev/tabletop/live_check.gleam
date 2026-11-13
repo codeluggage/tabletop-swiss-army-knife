@@ -66,10 +66,10 @@ pub fn decide(new: Stamp, live: Result(#(Int, String), String)) -> Verdict {
         Ok(Some(live)) -> {
           let live_release = version.to_string(live.release)
           case
-            version.is_newer(new.release, than: live.release),
-            new.schema < live.schema
+            new.schema < live.schema,
+            version.is_newer(new.release, than: live.release)
           {
-            False, _ ->
+            False, False ->
               NotLater(
                 "Version "
                 <> release
@@ -77,7 +77,7 @@ pub fn decide(new: Stamp, live: Result(#(Int, String), String)) -> Verdict {
                 <> live_release
                 <> ", so it may not replace it.",
               )
-            True, True ->
+            True, _ ->
               OlderLayout(
                 "Version "
                 <> release
@@ -89,7 +89,7 @@ pub fn decide(new: Stamp, live: Result(#(Int, String), String)) -> Verdict {
                 <> int.to_string(live.schema)
                 <> "), so it may not replace it.",
               )
-            True, False ->
+            False, True ->
               MayGoLive(
                 "Version "
                 <> release

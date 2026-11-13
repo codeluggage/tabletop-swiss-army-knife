@@ -28,6 +28,10 @@ pub fn the_same_or_an_older_version_may_not_test() {
 pub fn an_older_saved_data_layout_may_not_test() {
   let assert OlderLayout(_) =
     live_check.decide(stamp(new, 3), live("2026.11.13.1541", 4))
+  // Whatever the clocks say, so publish can ask this alone.
+  let assert OlderLayout(_) = live_check.decide(stamp(new, 3), live(new, 4))
+  let assert OlderLayout(_) =
+    live_check.decide(stamp(new, 3), live("2026.11.13.1543", 4))
 }
 
 pub fn a_site_from_before_versions_may_be_replaced_test() {
