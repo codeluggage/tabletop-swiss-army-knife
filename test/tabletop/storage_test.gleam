@@ -1,8 +1,9 @@
 import gleam/dynamic
 import gleam/dynamic/decode
 import gleam/json
+import gleam/list
 import gleam/option.{None, Some}
-import tabletop/storage.{Undecodable}
+import tabletop/storage.{BytesValue, JsonValue, Undecodable}
 
 pub fn schema_is_at_version_four_test() {
   assert storage.schema_version() == 4
@@ -52,4 +53,20 @@ pub fn an_unreadable_value_names_its_key_test() {
     == Error(Undecodable("first_opened"))
   assert storage.decode_value(not_a_string, "first_opened", decode.int)
     == Error(Undecodable("first_opened"))
+}
+
+pub fn every_store_in_schema_order_test() {
+  assert list.map(storage.stores(), storage.store_name)
+    == storage.stores_to_create(from: 0)
+}
+
+pub fn a_record_is_read_as_it_is_stored_test() {
+  let text = "{\"name\":\"Sunday Picnic\",\"tags\":[1,1.5,true,null]}"
+  let assert Ok(JsonValue(value)) = storage.stored_value(dynamic.string(text))
+  assert json.parse(json.to_string(value), decode.dynamic)
+    == json.parse(text, decode.dynamic)
+  assert storage.stored_value(dynamic.bit_array(<<1, 2>>))
+    == Ok(BytesValue(<<1, 2>>))
+  assert storage.stored_value(dynamic.string("not json")) == Error(Nil)
+  assert storage.stored_value(dynamic.int(5)) == Error(Nil)
 }

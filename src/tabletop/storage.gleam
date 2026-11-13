@@ -5,6 +5,8 @@
 //// The schema is `upgrades`: step n creates the stores that schema version n
 //// adds. "Adding a store" in AGENTS.md says how to add one.
 
+import gleam/bool
+import gleam/dict
 import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
 import gleam/javascript/promise.{type Promise}
@@ -69,6 +71,11 @@ pub fn schema_version() -> Int {
   list.length(upgrades)
 }
 
+/// Every store, in the order the schema added them.
+pub fn stores() -> List(Store) {
+  list.flatten(upgrades)
+}
+
 /// The stores to create when a database at `old_version` opens: every store
 /// that a later step adds. A database that does not exist yet is at 0.
 pub fn stores_to_create(from old_version: Int) -> List(String) {
@@ -78,7 +85,7 @@ pub fn stores_to_create(from old_version: Int) -> List(String) {
   |> list.map(store_name)
 }
 
-fn store_name(store: Store) -> String {
+pub fn store_name(store: Store) -> String {
   case store {
     Meta -> "meta"
     Lists -> "lists"
@@ -146,6 +153,8 @@ fn commit(
   writes: List(Write),
   failed: fn(String) -> StorageError,
 ) -> Promise(Result(Nil, StorageError)) {
+  // A transaction over no store is an error in IndexedDB.
+  use <- bool.guard(writes == [], promise.resolve(Ok(Nil)))
   let stores =
     list.map(writes, fn(write) { store_name(write.store) }) |> list.unique
   let puts =
@@ -190,6 +199,56 @@ pub fn get_all(
       Error(error) -> Error(error)
     })
   })
+}
+
+/// Every record in `store` as it is stored, JSON or bytes, in key order. One
+/// record that is neither is an error for the whole store.
+pub fn get_all_values(
+  db: Database,
+  store: Store,
+) -> Promise(Result(List(#(String, Value)), StorageError)) {
+  do_get_all(db, store_name(store))
+  |> promise.map(fn(raw) {
+    use raw <- result.try(result.map_error(raw, ReadFailed))
+    use pairs <- result.try(
+      decode.run(raw, keys_and_values())
+      |> result.replace_error(ReadFailed("The saved keys could not be read.")),
+    )
+    use #(key, raw) <- list.try_map(pairs)
+    stored_value(raw)
+    |> result.map(fn(value) { #(key, value) })
+    |> result.replace_error(Undecodable(key))
+  })
+}
+
+/// What IndexedDB holds for one record: a JSON string or bytes.
+pub fn stored_value(raw: Dynamic) -> Result(Value, Nil) {
+  case decode.run(raw, decode.string), decode.run(raw, decode.bit_array) {
+    Ok(text), _ ->
+      json.parse(text, json_decoder())
+      |> result.map(JsonValue)
+      |> result.replace_error(Nil)
+    _, Ok(bytes) -> Ok(BytesValue(bytes))
+    Error(_), Error(_) -> Error(Nil)
+  }
+}
+
+/// Any JSON value, kept as it is, to be written again. An object's keys may
+/// come back in another order.
+pub fn json_decoder() -> decode.Decoder(json.Json) {
+  use <- decode.recursive
+  decode.one_of(decode.map(decode.string, json.string), [
+    decode.map(decode.int, json.int),
+    decode.map(decode.float, json.float),
+    decode.map(decode.bool, json.bool),
+    decode.map(decode.list(json_decoder()), json.preprocessed_array),
+    decode.map(decode.dict(decode.string, json_decoder()), fn(fields) {
+      json.object(dict.to_list(fields))
+    }),
+    decode.map(decode.optional(decode.failure(Nil, "null")), fn(_) {
+      json.null()
+    }),
+  ])
 }
 
 /// `get_all` hands back `[keys, values]`, two lists in the same order.
