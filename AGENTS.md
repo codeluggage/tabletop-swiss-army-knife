@@ -172,12 +172,18 @@ The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026
 - `src/tabletop/roster.gleam` - the imported list file: its types, the decoder, and the pure functions the list screens use (units, settings, costs, categories, a unit's profiles and rules).
 - `src/tabletop/sheet.gleam` - the shapes a datasheet shows, whichever file they come from (costs, categories, profiles, rules, entry kinds), their decoders, and profile tables.
 - `src/tabletop/text.gleam` - text to segments: `**bold**` runs and names that link to a target each feature picks.
+- `src/tabletop/zip.gleam` - a zip from its bytes: the entries in its central directory, and one entry's bytes as the zip stores them.
+- `src/tabletop/bytes.gleam` + `bytes_ffi.mjs` - one zip entry unpacked to its bytes, inflated by the platform.
+- `src/tabletop/catalogue.gleam` - one game data file, the game system or a catalogue: its nodes and modifiers, the full decoder, and the shallow read the import uses.
+- `src/tabletop/data_index.gleam` - what the app keeps about a data set: a summary per file and its JSON, and the roots, grouping, search and scope files of a catalogue.
+- `src/tabletop/scope.gleam` - the decoded files one catalogue reaches: every node by id, what is hidden when nothing is chosen, and the page of a node as data.
 - `src/tabletop/sheet_view.gleam` - the views every feature shares: profile tables, text with links, rule chips, costs, back links, the not found message and storage errors in words.
 - `src/tabletop/route.gleam` - the screen in the URL hash: parse, `to_hash`, and the `hashchange` listener.
 - `src/tabletop/version.gleam` - the build version: parse, compare, `version.json`.
 - `web/` - the static shell: `index.html`, `manifest.webmanifest`, `sw.js`, `style.css`, `icons/`. `__VERSION__` and `__FILES__` are placeholders the build replaces.
 - `dev/tabletop/build.gleam`, `serve.gleam` + `node_ffi.mjs` - the build and serve commands, run on Node.
 - `test/` - gleeunit tests, one file per module, plus `content_rule_test.gleam`. Test data goes in `test/fixtures/`.
+- `test/tabletop/zip_writer.gleam` + `zip_writer_ffi.mjs` - writes the zips the tests read. `data_set_test.gleam` goes from a zip to pages on `test/fixtures/data/`, and on `local-data/` when it is there.
 - `dist/` - build output, ignored by git.
 
 ### Adding a store
