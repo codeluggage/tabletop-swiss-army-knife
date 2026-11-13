@@ -2,13 +2,16 @@
 // Result and never rejects. Values are the JSON strings Gleam made, or bytes.
 import { Result$Ok, Result$Error, BitArray$BitArray$data } from "../gleam.mjs";
 
-async function attempt(run) {
+async function attempt(run, describe = String) {
   try {
     return await run();
   } catch (error) {
-    return Result$Error(String(error));
+    return Result$Error(describe(error));
   }
 }
+
+// The error's name and its words, so Gleam can tell one failure from another.
+const nameAndWords = (error) => [error?.name ?? "", String(error)];
 
 export function open(name, version, storesToCreate) {
   return attempt(() => new Promise((resolve) => {
@@ -21,8 +24,8 @@ export function open(name, version, storesToCreate) {
       request.result.onversionchange = () => request.result.close();
       resolve(Result$Ok(request.result));
     };
-    request.onerror = () => resolve(Result$Error(String(request.error)));
-  }));
+    request.onerror = () => resolve(Result$Error(nameAndWords(request.error)));
+  }), nameAndWords);
 }
 
 export function get(db, store, key) {

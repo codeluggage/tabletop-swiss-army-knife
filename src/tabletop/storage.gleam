@@ -49,6 +49,9 @@ pub type Write {
 }
 
 pub type StorageError {
+  /// A newer version of the app already upgraded the saved data, so this
+  /// older one cannot open it. Nothing is lost.
+  AppOlderThanData
   OpenFailed(reason: String)
   ReadFailed(reason: String)
   WriteFailed(reason: String)
@@ -106,7 +109,16 @@ pub fn store_name(store: Store) -> String {
 
 pub fn open() -> Promise(Result(Database, StorageError)) {
   do_open(database_name, schema_version(), stores_to_create)
-  |> promise.map(result.map_error(_, OpenFailed))
+  |> promise.map(result.map_error(_, open_error))
+}
+
+/// Why the database did not open, from the browser's error name and words.
+pub fn open_error(failure: #(String, String)) -> StorageError {
+  case failure {
+    // The saved schema is later than this app's.
+    #("VersionError", _) -> AppOlderThanData
+    #(_, reason) -> OpenFailed(reason)
+  }
 }
 
 /// `Ok(None)` when nothing is stored under `key`.
@@ -306,7 +318,7 @@ fn do_open(
   name: String,
   version: Int,
   stores_to_create: fn(Int) -> List(String),
-) -> Promise(Result(Database, String))
+) -> Promise(Result(Database, #(String, String)))
 
 @external(javascript, "./storage_ffi.mjs", "get")
 fn do_get(

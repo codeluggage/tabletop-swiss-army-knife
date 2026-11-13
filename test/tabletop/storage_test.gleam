@@ -44,6 +44,17 @@ pub fn a_current_database_gets_no_store_test() {
   assert storage.stores_to_create(from: storage.schema_version()) == []
 }
 
+pub fn an_app_older_than_the_data_is_its_own_error_test() {
+  let words =
+    "VersionError: The requested version (4) is less than the existing version (5)."
+  assert storage.open_error(#("VersionError", words))
+    == storage.AppOlderThanData
+  assert storage.open_error(#("UnknownError", "UnknownError: gone"))
+    == storage.OpenFailed("UnknownError: gone")
+  assert storage.open_error(#("", "TypeError: no indexedDB"))
+    == storage.OpenFailed("TypeError: no indexedDB")
+}
+
 pub fn a_missing_value_is_none_test() {
   assert storage.decode_value(dynamic.nil(), "first_opened", decode.int)
     == Ok(None)

@@ -7,7 +7,7 @@ import simplifile
 import tabletop.{
   type Model, Applying, Available, BackupKind, BackupMsg, CardsMsg, FileNotRead,
   FileRead, Flags, HashChanged, ListsMsg, Model, NeitherKind, NotAKnownKind,
-  TextKind, TrackerMsg, UpToDate, VersionFetched, ZipKind,
+  StorageOpened, TextKind, TrackerMsg, UpToDate, VersionFetched, ZipKind,
 }
 import tabletop/backup
 import tabletop/cards
@@ -293,6 +293,39 @@ pub fn the_home_screen_has_games_and_a_list_leads_back_to_its_game_test() {
     tabletop.view(Model(..model, route: route.ListPage("l1")))
     |> element.to_string
   assert string.contains(page, "Back to the game")
+}
+
+pub fn an_app_older_than_the_data_says_so_once_on_the_home_screen_test() {
+  let message =
+    "This is an older version of the app than the data saved on this device. Tap Reload below. If there is no Reload, close the app fully and open it again. Nothing saved on this device was lost."
+  let older = storage.AppOlderThanData
+  let #(opened, _) =
+    tabletop.update(model(UpToDate), StorageOpened(Error(older)))
+  // What the features read when storage did not open.
+  let #(opened, _) =
+    tabletop.update(opened, ListsMsg(lists.ListsLoaded(Error(older))))
+  let #(opened, _) =
+    tabletop.update(opened, TrackerMsg(tracker.SheetsLoaded(Error(older))))
+  let home = tabletop.view(opened) |> element.to_string
+  let assert [before, after] = string.split(home, message)
+  assert string.ends_with(
+    before,
+    "<h1>Tabletop</h1><p class=\"problem\" role=\"alert\">",
+  )
+  assert !string.contains(after, "could not be read")
+  assert !string.contains(after, "Import a file")
+  assert !string.contains(after, "<h2>Games</h2>")
+  assert string.contains(after, "<h2>About this device</h2>")
+  // Any other failure to open keeps its words and the features.
+  let #(other, _) =
+    tabletop.update(
+      model(UpToDate),
+      StorageOpened(Error(storage.OpenFailed("UnknownError: gone"))),
+    )
+  let home = tabletop.view(other) |> element.to_string
+  assert !string.contains(home, message)
+  assert string.contains(home, "Could not open. UnknownError: gone")
+  assert string.contains(home, "<h2>Games</h2>")
 }
 
 pub fn the_home_screen_has_a_backup_section_above_about_test() {

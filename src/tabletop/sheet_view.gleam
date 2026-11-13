@@ -162,6 +162,8 @@ pub fn not_found(message: String) -> List(Element(msg)) {
 /// A storage error in words, for any screen that shows one.
 pub fn describe_storage_error(error: StorageError) -> String {
   case error {
+    storage.AppOlderThanData ->
+      "This app is older than the data saved on this device."
     storage.OpenFailed(reason) -> "Could not open. " <> reason
     storage.ReadFailed(reason) -> "Could not read. " <> reason
     storage.WriteFailed(reason) -> "Could not save. " <> reason

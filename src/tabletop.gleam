@@ -542,6 +542,22 @@ fn home(model: Model) -> List(Element(Msg)) {
   use <- bool.lazy_guard(backup.asking(model.backup), fn() {
     backup.question_page(model.backup) |> backup_view
   })
+  // Nothing on this screen can read or save, so one message stands in for
+  // the import and every feature.
+  use <- bool.lazy_guard(
+    model.storage == Some(Error(storage.AppOlderThanData)),
+    fn() {
+      [
+        html.h1([], [html.text("Tabletop")]),
+        html.p([attribute.class("problem"), attribute.role("alert")], [
+          html.text(
+            "This is an older version of the app than the data saved on this device. Tap Reload below. If there is no Reload, close the app fully and open it again. Nothing saved on this device was lost.",
+          ),
+        ]),
+        about(model),
+      ]
+    },
+  )
   list.flatten([
     [
       html.h1([], [html.text("Tabletop")]),
@@ -583,21 +599,23 @@ fn home(model: Model) -> List(Element(Msg)) {
     data_view(data.home(model.data)),
     tracker_view(tracker.home(model.tracker)),
     backup_view(backup.section(model.backup)),
-    [
-      html.section([attribute.class("about")], [
-        html.h2([], [html.text("About this device")]),
-        html.dl([], [
-          fact("Version", model.running),
-          fact("Commit", model.commit),
-          fact("Storage", storage_label(model.storage)),
-          fact("Persistent storage", persistence_label(model.persistence)),
-          fact(
-            "First opened on this device",
-            first_opened_label(model.first_opened),
-          ),
-        ]),
-      ]),
-    ],
+    [about(model)],
+  ])
+}
+
+fn about(model: Model) -> Element(Msg) {
+  html.section([attribute.class("about")], [
+    html.h2([], [html.text("About this device")]),
+    html.dl([], [
+      fact("Version", model.running),
+      fact("Commit", model.commit),
+      fact("Storage", storage_label(model.storage)),
+      fact("Persistent storage", persistence_label(model.persistence)),
+      fact(
+        "First opened on this device",
+        first_opened_label(model.first_opened),
+      ),
+    ]),
   ])
 }
 
