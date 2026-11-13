@@ -242,6 +242,19 @@ pub fn get_all_values(
   })
 }
 
+/// Every key in `store`, in key order, without reading a record.
+pub fn keys(
+  db: Database,
+  store: Store,
+) -> Promise(Result(List(String), StorageError)) {
+  do_keys(db, store_name(store))
+  |> promise.map(fn(raw) {
+    use raw <- result.try(result.map_error(raw, ReadFailed))
+    decode.run(raw, decode.list(decode.string))
+    |> result.replace_error(ReadFailed("The saved keys could not be read."))
+  })
+}
+
 /// What IndexedDB holds for one record: a JSON string or bytes.
 pub fn stored_value(raw: Dynamic) -> Result(Value, Nil) {
   case decode.run(raw, decode.string), decode.run(raw, decode.bit_array) {
@@ -342,6 +355,9 @@ fn stored_bytes(bytes: BitArray) -> Dynamic
 
 @external(javascript, "./storage_ffi.mjs", "get_all")
 fn do_get_all(db: Database, store: String) -> Promise(Result(Dynamic, String))
+
+@external(javascript, "./storage_ffi.mjs", "keys")
+fn do_keys(db: Database, store: String) -> Promise(Result(Dynamic, String))
 
 @external(javascript, "./storage_ffi.mjs", "persist")
 fn do_persist() -> Promise(Result(Bool, String))

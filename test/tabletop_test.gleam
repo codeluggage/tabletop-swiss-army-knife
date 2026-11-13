@@ -211,12 +211,21 @@ pub fn a_backup_file_is_a_backup_test() {
 }
 
 pub fn a_backup_file_asks_before_anything_is_written_test() {
-  let #(model, _) =
-    tabletop.update(
-      model(UpToDate),
-      FileRead(Ok(#("tabletop-backup-2026-11-13.json", backup_file()))),
+  let chosen = FileRead(Ok(#("tabletop-backup-2026-11-13.json", backup_file())))
+  // Without storage it cannot read what this device has, so it stops there.
+  let #(closed, _) = tabletop.update(model(UpToDate), chosen)
+  assert closed.lists.problem == None
+  assert string.contains(
+    tabletop.view(closed) |> element.to_string,
+    "Storage is not open on this device, so the backup cannot be restored.",
+  )
+  // With storage, the question shows while this device's keys are read.
+  let assert BackupKind(Ok(read)) = tabletop.file_kind(backup_file())
+  let model =
+    Model(
+      ..model(UpToDate),
+      backup: backup.State(..backup.init(), restore: backup.Checking(read)),
     )
-  assert model.lists.problem == None
   let page = tabletop.view(model) |> element.to_string
   assert string.starts_with(
     page,

@@ -70,6 +70,15 @@ export function get_all(db, store) {
   }));
 }
 
+// Resolves to the store's keys only, so no record is read.
+export function keys(db, store) {
+  return attempt(() => new Promise((resolve) => {
+    const request = db.transaction(store, "readonly").objectStore(store).getAllKeys();
+    request.onsuccess = () => resolve(Result$Ok(request.result));
+    request.onerror = () => resolve(Result$Error(String(request.error)));
+  }));
+}
+
 export function persist() {
   return attempt(async () => Result$Ok(await navigator.storage.persist()));
 }

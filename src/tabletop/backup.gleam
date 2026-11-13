@@ -201,24 +201,103 @@ pub fn writes(backup: Backup) -> List(Write) {
   storage.Put(store, key, value)
 }
 
+/// A backup and its records split by whether this device already has a
+/// record under the same key. `missing` and `present` keep its header.
+pub type Split {
+  Split(backup: Backup, missing: Backup, present: Backup)
+}
+
+/// Split `backup` by the keys this device has, store by store.
+pub fn split(backup: Backup, on_device: List(#(Store, List(String)))) -> Split {
+  let part = fn(here) {
+    let stores =
+      list.map(backup.stores, fn(store) {
+        let keys = list.key_find(on_device, store.0) |> result.unwrap([])
+        #(
+          store.0,
+          list.filter(store.1, fn(record) {
+            list.contains(keys, record.0) == here
+          }),
+        )
+      })
+    Backup(..backup, stores:)
+  }
+  Split(backup:, missing: part(False), present: part(True))
+}
+
+/// What a restore does with a record this device already has.
+pub type Choice {
+  /// Write only the records whose keys are not on this device.
+  AddMissing
+  /// Write every record, over the copy on this device.
+  ReplaceAll
+}
+
+/// The writes of a restore, for one `storage.write`.
+pub fn restore_writes(split: Split, choice: Choice) -> List(Write) {
+  case choice {
+    AddMissing -> writes(split.missing)
+    ReplaceAll -> writes(split.backup)
+  }
+}
+
+/// The sentence that says what of the file this device already has, such as
+/// `2 games in this file are already on this device.`, or `None` when it has
+/// none of it.
+pub fn already_here(split: Split) -> Option(String) {
+  let here = holds(split.present) <> " in this file "
+  case count(split.present) {
+    0 -> None
+    1 -> Some(here <> "is already on this device.")
+    _ -> Some(here <> "are already on this device.")
+  }
+}
+
+/// What a restore did: what it added, and what it replaced or kept.
+pub fn restored(split: Split, choice: Choice) -> String {
+  let added = "Added " <> holds(split.missing) <> " from the backup file."
+  let here = holds(split.present)
+  case count(split.present), choice {
+    0, _ -> added
+    _, AddMissing -> added <> " Kept this device's copies of " <> here <> "."
+    _, ReplaceAll ->
+      added
+      <> " Replaced this device's copies of "
+      <> here
+      <> " with the copies in the file."
+  }
+}
+
+/// The stores a backup counts in words, each with its word for one and many.
+const counted = [
+  #(storage.Lists, "list", "lists"),
+  #(storage.DataIndexes, "game data set", "game data sets"),
+  #(storage.Cards, "card", "cards"),
+  #(storage.Sheets, "score sheet", "score sheets"),
+  #(storage.Games, "game", "games"),
+]
+
+fn records(backup: Backup, store: Store) -> List(#(String, Value)) {
+  list.key_find(backup.stores, store) |> result.unwrap([])
+}
+
+/// How many things `holds` counts.
+fn count(backup: Backup) -> Int {
+  use sum, store <- list.fold(counted, 0)
+  sum + list.length(records(backup, store.0))
+}
+
 /// What a backup holds, in counts and plain words, such as
 /// `2 lists, 1 game data set, 14 cards, 1 score sheet and 3 games`.
 pub fn holds(backup: Backup) -> String {
-  let count = fn(store, one, many) {
-    case list.key_find(backup.stores, store) |> result.unwrap([]) {
-      [] -> Error(Nil)
-      [_] -> Ok("1 " <> one)
-      records -> Ok(int.to_string(list.length(records)) <> " " <> many)
-    }
-  }
   let parts =
-    result.values([
-      count(storage.Lists, "list", "lists"),
-      count(storage.DataIndexes, "game data set", "game data sets"),
-      count(storage.Cards, "card", "cards"),
-      count(storage.Sheets, "score sheet", "score sheets"),
-      count(storage.Games, "game", "games"),
-    ])
+    list.filter_map(counted, fn(store) {
+      case records(backup, store.0) {
+        [] -> Error(Nil)
+        [_] -> Ok("1 " <> store.1)
+        records -> Ok(int.to_string(list.length(records)) <> " " <> store.2)
+      }
+    })
   case list.reverse(parts) {
     [] -> "nothing"
     [one] -> one
@@ -263,12 +342,15 @@ pub type Save {
 /// Where restoring a chosen backup file is.
 pub type Restore {
   NoRestore
-  /// The file is read, and the question waits for Restore or Cancel.
-  Asking(Backup)
-  /// Restore was pressed and the records are being written.
-  Writing(Backup)
-  /// Every record was written. `holds` says what they were.
-  Done(holds: String)
+  /// The file is read, and the app reads which of its keys this device has.
+  Checking(Backup)
+  /// The question waits for an answer.
+  Asking(Split)
+  /// An answer was pressed and the records are being written.
+  Writing(Split, Choice)
+  /// The records were written. `said` says what was added, and what was
+  /// replaced or kept.
+  Done(said: String)
   /// Nothing was written, and why.
   Failed(Problem)
 }
@@ -284,7 +366,9 @@ pub type Msg {
   SaveClicked
   /// When the file was made, and its name.
   Saved(Result(#(Int, String), StorageError))
-  RestoreClicked
+  /// The keys this device has, in each store that goes into a backup.
+  KeysRead(Result(List(#(Store, List(String))), StorageError))
+  RestoreClicked(Choice)
   CancelClicked
   Restored(Result(Nil, StorageError))
 }
@@ -341,12 +425,20 @@ pub fn update(
       State(..state, save: SaveFailed(error)),
       effect.none(),
     )
-    RestoreClicked ->
+    KeysRead(keys) -> {
+      let restore = case state.restore, keys {
+        Checking(backup), Ok(keys) -> Asking(split(backup, keys))
+        Checking(_), Error(error) -> Failed(NotWritten(error))
+        other, _ -> other
+      }
+      #(State(..state, restore:), effect.none())
+    }
+    RestoreClicked(choice) ->
       case state.restore, db {
-        Asking(backup), Some(Ok(db)) -> #(
-          State(..state, restore: Writing(backup)),
+        Asking(split), Some(Ok(db)) -> #(
+          State(..state, restore: Writing(split, choice)),
           effects.from_promise(
-            fn() { storage.write(db, writes(backup)) },
+            fn() { storage.write(db, restore_writes(split, choice)) },
             Restored,
           ),
         )
@@ -358,15 +450,17 @@ pub fn update(
           State(..state, restore: Failed(NoStorage)),
           effect.none(),
         )
-        NoRestore, _ | Writing(_), _ | Done(_), _ | Failed(_), _ -> #(
-          state,
-          effect.none(),
-        )
+        NoRestore, _
+        | Checking(_), _
+        | Writing(..), _
+        | Done(_), _
+        | Failed(_), _
+        -> #(state, effect.none())
       }
     CancelClicked -> #(State(..state, restore: NoRestore), effect.none())
     Restored(Ok(Nil)) -> {
       let restore = case state.restore {
-        Writing(backup) -> Done(holds(backup))
+        Writing(split, choice) -> Done(restored(split, choice))
         other -> other
       }
       #(State(..state, restore:), effect.none())
@@ -378,13 +472,42 @@ pub fn update(
   }
 }
 
-/// What happens after the shell has read a chosen backup file: the question,
-/// or why it cannot be restored.
-pub fn file_read(state: State, read: Result(Backup, ReadError)) -> State {
-  case read {
-    Ok(backup) -> State(..state, restore: Asking(backup))
-    Error(error) -> State(..state, restore: Failed(CannotRead(error)))
+/// What happens after the shell has read a chosen backup file: read which of
+/// its keys this device has before the question, or say why it cannot be
+/// restored.
+pub fn file_read(
+  state: State,
+  read: Result(Backup, ReadError),
+  db: Option(Result(Database, StorageError)),
+) -> #(State, Effect(Msg)) {
+  case read, db {
+    Error(error), _ -> #(
+      State(..state, restore: Failed(CannotRead(error))),
+      effect.none(),
+    )
+    Ok(backup), Some(Ok(db)) -> #(
+      State(..state, restore: Checking(backup)),
+      effects.from_promise(fn() { device_keys(db) }, KeysRead),
+    )
+    Ok(_), Some(Error(error)) -> #(
+      State(..state, restore: Failed(NotWritten(error))),
+      effect.none(),
+    )
+    Ok(_), None -> #(State(..state, restore: Failed(NoStorage)), effect.none())
   }
+}
+
+/// The keys this device has in each store that goes into a backup.
+fn device_keys(
+  db: Database,
+) -> Promise(Result(List(#(Store, List(String))), StorageError)) {
+  stores()
+  |> list.map(fn(store) {
+    storage.keys(db, store)
+    |> promise.map(result.map(_, fn(keys) { #(store, keys) }))
+  })
+  |> promise.await_list
+  |> promise.map(result.all)
 }
 
 /// The screen changed or another file was chosen: an open question and the
@@ -395,8 +518,8 @@ pub fn screen_changed(state: State) -> State {
     NotSaving | Handed(_) | SaveFailed(_) -> NotSaving
   }
   let restore = case state.restore {
-    Writing(_) -> state.restore
-    NoRestore | Asking(_) | Done(_) | Failed(_) -> NoRestore
+    Writing(..) -> state.restore
+    NoRestore | Checking(_) | Asking(_) | Done(_) | Failed(_) -> NoRestore
   }
   State(..state, save:, restore:)
 }
@@ -405,7 +528,7 @@ pub fn screen_changed(state: State) -> State {
 /// place of the home screen.
 pub fn asking(state: State) -> Bool {
   case state.restore {
-    Asking(_) | Writing(_) -> True
+    Checking(_) | Asking(_) | Writing(..) -> True
     NoRestore | Done(_) | Failed(_) -> False
   }
 }
@@ -449,17 +572,13 @@ fn save(db: Database) -> Promise(Result(#(Int, String), StorageError)) {
 /// What a restore did, or why it did not, for under the import control.
 pub fn status(state: State) -> List(Element(Msg)) {
   case state.restore {
-    Done(holds:) -> [
-      html.p([attribute.role("status")], [
-        html.text("Restored " <> holds <> " from the backup file."),
-      ]),
-    ]
+    Done(said:) -> [html.p([attribute.role("status")], [html.text(said)])]
     Failed(problem) -> [
       html.p([attribute.class("problem"), attribute.role("alert")], [
         html.text(describe_problem(problem)),
       ]),
     ]
-    NoRestore | Asking(_) | Writing(_) -> []
+    NoRestore | Checking(_) | Asking(_) | Writing(..) -> []
   }
 }
 
@@ -519,61 +638,90 @@ pub fn section(state: State) -> List(Element(Msg)) {
 }
 
 /// The question before anything is written: what the file holds, when and
-/// with which version it was made, and what restoring does.
+/// with which version it was made, what of it this device already has, and
+/// what each answer does.
 pub fn question_page(state: State) -> List(Element(Msg)) {
-  let #(backup, writing) = case state.restore {
-    Asking(backup) -> #(Some(backup), False)
-    Writing(backup) -> #(Some(backup), True)
-    NoRestore | Done(_) | Failed(_) -> #(None, False)
+  case state.restore {
+    Checking(backup) ->
+      question(backup, [note("Looking at what is already on this device…")])
+    Asking(split) -> question(split.backup, answers(split, False))
+    Writing(split, _) ->
+      question(
+        split.backup,
+        list.append(answers(split, True), [note("Restoring…")]),
+      )
+    NoRestore | Done(_) | Failed(_) -> []
   }
-  case backup {
-    None -> []
-    Some(backup) -> [
-      html.h1([], [html.text("Restore this backup?")]),
-      html.p([], [html.text("It holds " <> holds(backup) <> ".")]),
-      html.p([], [
-        html.text(
-          "It was made on "
-          <> browser.local_time_of_iso(backup.made)
-          <> " with version "
-          <> backup.release
-          <> ".",
-        ),
-      ]),
-      html.p([], [
-        html.text(
-          "Anything in this file that is already on this device is replaced by the copy in the file, and nothing else on this device is deleted.",
-        ),
-      ]),
-      html.div([attribute.class("actions")], [
-        html.button(
-          [
-            attribute.type_("button"),
-            attribute.class("button primary"),
-            attribute.disabled(writing),
-            event.on_click(RestoreClicked),
-          ],
-          [html.text("Restore")],
-        ),
-        html.button(
-          [
-            attribute.type_("button"),
-            attribute.class("button"),
-            attribute.disabled(writing),
-            event.on_click(CancelClicked),
-          ],
-          [html.text("Cancel")],
-        ),
-      ]),
-      case writing {
-        True ->
-          html.p([attribute.class("note"), attribute.role("status")], [
-            html.text("Restoring…"),
-          ])
-        False -> element.none()
-      },
-    ]
+}
+
+fn question(backup: Backup, rest: List(Element(Msg))) -> List(Element(Msg)) {
+  [
+    html.h1([], [html.text("Restore this backup?")]),
+    html.p([], [html.text("It holds " <> holds(backup) <> ".")]),
+    html.p([], [
+      html.text(
+        "It was made on "
+        <> browser.local_time_of_iso(backup.made)
+        <> " with version "
+        <> backup.release
+        <> ".",
+      ),
+    ]),
+    ..rest
+  ]
+}
+
+/// What each answer does, and its buttons: Restore when this device has none
+/// of the file, else a choice about the copies it has.
+fn answers(split: Split, writing: Bool) -> List(Element(Msg)) {
+  let button = fn(label, class, msg) {
+    html.button(
+      [
+        attribute.type_("button"),
+        attribute.class(class),
+        attribute.disabled(writing),
+        event.on_click(msg),
+      ],
+      [html.text(label)],
+    )
   }
+  let cancel = button("Cancel", "button", CancelClicked)
+  let #(said, buttons) = case already_here(split) {
+    None -> #(
+      [
+        "Anything in this file that is already on this device is replaced by the copy in the file, and nothing else on this device is deleted.",
+      ],
+      [button("Restore", "button primary", RestoreClicked(ReplaceAll)), cancel],
+    )
+    Some(here) -> #(
+      [
+        here,
+        "\"Add only what is missing\" keeps this device's copies as they are. \"Replace with the copies in the file\" writes the file's copies over them.",
+      ],
+      [
+        button(
+          "Add only what is missing",
+          "button primary",
+          RestoreClicked(AddMissing),
+        ),
+        button(
+          "Replace with the copies in the file",
+          "button",
+          RestoreClicked(ReplaceAll),
+        ),
+        cancel,
+      ],
+    )
+  }
+  list.append(list.map(said, fn(line) { html.p([], [html.text(line)]) }), [
+    html.div([attribute.class("actions")], buttons),
+  ])
+}
+
+fn note(said: String) -> Element(Msg) {
+  html.p([attribute.class("note"), attribute.role("status")], [
+    html.text(said),
+  ])
 }
 
 fn describe_problem(problem: Problem) -> String {

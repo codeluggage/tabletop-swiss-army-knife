@@ -236,10 +236,9 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       case file_kind(bytes) {
         ZipKind ->
           data.import_zip(model.data, file_name, bytes) |> from_data(model)
-        BackupKind(read) -> #(
-          Model(..model, backup: backup.file_read(model.backup, read)),
-          effect.none(),
-        )
+        BackupKind(read) ->
+          backup.file_read(model.backup, read, model.storage)
+          |> from_backup(model)
         TextKind(text) ->
           lists.import_file(model.lists, model.storage, file_name, text)
           |> from_lists(model)

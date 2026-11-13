@@ -4,7 +4,7 @@ import gleam/int
 import gleam/io
 import gleam/json
 import gleam/list
-import gleam/option.{None}
+import gleam/option.{None, Some}
 import gleam/string
 import lustre/element
 import simplifile
@@ -183,6 +183,122 @@ pub fn a_restore_puts_every_record_and_no_device_key_test() {
       storage.Remove(..) -> False
     }
   })
+}
+
+/// The fixture against a device that has its game, its sheet and one of its
+/// two cards, plus records of its own.
+fn a_split() -> backup.Split {
+  let assert Ok(read) = backup.read(fixture(), schema: 5)
+  backup.split(read, [
+    #(Cards, ["card-pour", "card-own"]),
+    #(Sheets, ["sheet-picnic"]),
+    #(Games, ["game-own", "game-picnic"]),
+  ])
+}
+
+fn keys(writes: List(storage.Write)) -> List(#(storage.Store, String)) {
+  list.map(writes, fn(write) { #(write.store, write.key) })
+}
+
+pub fn a_backup_splits_into_missing_and_present_by_key_test() {
+  let split = a_split()
+  let stores = fn(part: backup.Backup) {
+    list.map(part.stores, fn(store) {
+      #(store.0, list.map(store.1, fn(record) { record.0 }))
+    })
+  }
+  assert stores(split.missing)
+    == [
+      #(Meta, []),
+      #(Lists, ["list-sunday"]),
+      #(DataIndexes, ["sys-picnic"]),
+      #(DataZips, ["sys-picnic"]),
+      #(Cards, ["card-crumb"]),
+      #(Sheets, []),
+      #(Games, []),
+    ]
+  assert stores(split.present)
+    == [
+      #(Meta, []),
+      #(Lists, []),
+      #(DataIndexes, []),
+      #(DataZips, []),
+      #(Cards, ["card-pour"]),
+      #(Sheets, ["sheet-picnic"]),
+      #(Games, ["game-picnic"]),
+    ]
+  assert split.missing.release == split.backup.release
+  // A device with none of it: everything is missing.
+  let assert Ok(read) = backup.read(fixture(), schema: 5)
+  assert backup.split(read, []).missing == read
+}
+
+pub fn the_question_says_how_much_is_already_here_test() {
+  assert backup.already_here(a_split())
+    == Some(
+      "1 card, 1 score sheet and 1 game in this file are already on this device.",
+    )
+  let assert Ok(read) = backup.read(fixture(), schema: 5)
+  assert backup.already_here(backup.split(read, [#(Games, ["game-picnic"])]))
+    == Some("1 game in this file is already on this device.")
+  assert backup.already_here(backup.split(read, [#(Games, ["game-own"])]))
+    == None
+}
+
+pub fn add_only_what_is_missing_leaves_the_device_copies_test() {
+  assert keys(backup.restore_writes(a_split(), backup.AddMissing))
+    == [
+      #(Lists, "list-sunday"),
+      #(DataIndexes, "sys-picnic"),
+      #(DataZips, "sys-picnic"),
+      #(Cards, "card-crumb"),
+    ]
+  assert backup.restored(a_split(), backup.AddMissing)
+    == "Added 1 list, 1 game data set and 1 card from the backup file. Kept this device's copies of 1 card, 1 score sheet and 1 game."
+}
+
+pub fn replace_writes_every_record_over_the_device_copies_test() {
+  assert keys(backup.restore_writes(a_split(), backup.ReplaceAll))
+    == [
+      #(Lists, "list-sunday"),
+      #(DataIndexes, "sys-picnic"),
+      #(DataZips, "sys-picnic"),
+      #(Cards, "card-pour"),
+      #(Cards, "card-crumb"),
+      #(Sheets, "sheet-picnic"),
+      #(Games, "game-picnic"),
+    ]
+  assert backup.restored(a_split(), backup.ReplaceAll)
+    == "Added 1 list, 1 game data set and 1 card from the backup file. Replaced this device's copies of 1 card, 1 score sheet and 1 game with the copies in the file."
+  let assert Ok(read) = backup.read(fixture(), schema: 5)
+  assert backup.restored(backup.split(read, []), backup.ReplaceAll)
+    == "Added 1 list, 1 game data set, 2 cards, 1 score sheet and 1 game from the backup file."
+}
+
+pub fn the_question_offers_a_choice_only_when_some_is_here_test() {
+  let assert Ok(read) = backup.read(fixture(), schema: 5)
+  let checking = backup.State(..backup.init(), restore: backup.Checking(read))
+  let page = fn(state) {
+    element.fragment(backup.question_page(state)) |> element.to_string
+  }
+  assert string.contains(page(checking), "Looking at what is already")
+  let answered = fn(keys) {
+    backup.update(checking, backup.KeysRead(Ok(keys)), None).0
+  }
+  let none_here = page(answered([]))
+  assert string.contains(none_here, ">Restore</button>")
+  assert !string.contains(none_here, "Add only what is missing")
+  let some_here = answered([#(Games, ["game-picnic"])])
+  assert string.contains(page(some_here), ">Add only what is missing</button>")
+  assert string.contains(
+    page(some_here),
+    ">Replace with the copies in the file</button>",
+  )
+  assert string.contains(page(some_here), ">Cancel</button>")
+  // A pressed answer with no storage writes nothing.
+  let #(pressed, _) =
+    backup.update(some_here, backup.RestoreClicked(backup.AddMissing), None)
+  assert pressed.restore == backup.Failed(backup.NoStorage)
 }
 
 pub fn a_restored_index_is_built_again_from_its_zip_test() {
