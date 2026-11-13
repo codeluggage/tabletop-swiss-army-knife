@@ -17,6 +17,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import tabletop/browser
+import tabletop/effects
 import tabletop/roster.{type Roster, type Selection}
 import tabletop/route
 import tabletop/sheet
@@ -66,7 +67,7 @@ pub fn init() -> State {
 /// the lists show why.
 pub fn load(db: Result(Database, StorageError)) -> Effect(Msg) {
   case db {
-    Ok(db) -> from_promise(fn() { load_lists(db) }, ListsLoaded)
+    Ok(db) -> effects.from_promise(fn() { load_lists(db) }, ListsLoaded)
     Error(error) -> {
       use dispatch <- effect.from
       dispatch(ListsLoaded(Error(error)))
@@ -100,9 +101,10 @@ pub fn update(
       case db {
         Some(Ok(db)) -> #(
           state,
-          from_promise(fn() { storage.delete(db, storage.Lists, id) }, fn(done) {
-            ListDeleted(id:, result: done)
-          }),
+          effects.from_promise(
+            fn() { storage.delete(db, storage.Lists, id) },
+            fn(done) { ListDeleted(id:, result: done) },
+          ),
         )
         _ -> #(
           State(..state, confirming: None, problem: Some(NoStorage)),
@@ -139,7 +141,10 @@ pub fn import_file(
     )
     Ok(decoded), Some(Ok(db)) -> #(
       state,
-      from_promise(fn() { save_list(db, file_name, text, decoded) }, ListSaved),
+      effects.from_promise(
+        fn() { save_list(db, file_name, text, decoded) },
+        ListSaved,
+      ),
     )
     Ok(_), _ -> #(State(..state, problem: Some(NoStorage)), effect.none())
   }
@@ -220,12 +225,6 @@ fn save_list(
     _,
     Saved(id:, name:, imported:, roster: Ok(decoded)),
   ))
-}
-
-fn from_promise(run: fn() -> Promise(a), to_msg: fn(a) -> Msg) -> Effect(Msg) {
-  use dispatch <- effect.from
-  let _ = promise.tap(run(), fn(value) { dispatch(to_msg(value)) })
-  Nil
 }
 
 // --- Views ------------------------------------------------------------------

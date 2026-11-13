@@ -20,6 +20,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import tabletop/browser
+import tabletop/effects
 import tabletop/lists
 import tabletop/route.{type Route}
 import tabletop/sheet_view
@@ -92,8 +93,8 @@ pub fn init(flags: Flags) -> #(Model, Effect(Msg)) {
   #(
     model,
     effect.batch([
-      from_promise(storage.open, StorageOpened),
-      from_promise(storage.persist, PersistAnswered),
+      effects.from_promise(storage.open, StorageOpened),
+      effects.from_promise(storage.persist, PersistAnswered),
       check_version(),
       listen(),
     ]),
@@ -105,7 +106,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     StorageOpened(Ok(db)) -> #(
       Model(..model, storage: Some(Ok(db))),
       effect.batch([
-        from_promise(fn() { load_first_opened(db) }, FirstOpenedLoaded),
+        effects.from_promise(fn() { load_first_opened(db) }, FirstOpenedLoaded),
         lists.load(Ok(db)) |> effect.map(ListsMsg),
       ]),
     )
@@ -133,7 +134,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     VisibilityChanged(_) -> #(model, effect.none())
     ReloadClicked -> #(
       Model(..model, update: Applying),
-      from_promise(browser.activate_new_worker, WorkerActivated),
+      effects.from_promise(browser.activate_new_worker, WorkerActivated),
     )
     // The new worker takes over and fires ControllerChanged, which reloads.
     // ponytail: if its install fails nothing reloads; Reload stays on screen
@@ -165,7 +166,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     }
     FileChosen(input:) -> #(
       Model(..model, lists: lists.file_chosen(model.lists)),
-      from_promise(fn() { browser.read_chosen_file(input) }, FileRead),
+      effects.from_promise(fn() { browser.read_chosen_file(input) }, FileRead),
     )
     FileRead(Error(reason)) -> #(
       Model(..model, lists: lists.file_not_read(model.lists, reason)),
@@ -221,14 +222,11 @@ fn load_first_opened(db: Database) -> Promise(Result(Int, StorageError)) {
   }
 }
 
-fn from_promise(run: fn() -> Promise(a), to_msg: fn(a) -> Msg) -> Effect(Msg) {
-  use dispatch <- effect.from
-  let _ = promise.tap(run(), fn(value) { dispatch(to_msg(value)) })
-  Nil
-}
-
 fn check_version() -> Effect(Msg) {
-  from_promise(fn() { browser.fetch_no_store("version.json") }, VersionFetched)
+  effects.from_promise(
+    fn() { browser.fetch_no_store("version.json") },
+    VersionFetched,
+  )
 }
 
 fn listen() -> Effect(Msg) {
