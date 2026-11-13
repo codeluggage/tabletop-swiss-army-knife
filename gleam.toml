@@ -1,5 +1,6 @@
 name = "tabletop"
 version = "0.1.0"
+licences = ["GPL-3.0-or-later"]
 target = "javascript"
 gleam = ">= 1.19.0"
 
