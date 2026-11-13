@@ -54,6 +54,30 @@ export function local_time(ms) {
   return new Date(ms).toLocaleString();
 }
 
+export function iso_time(ms) {
+  return new Date(ms).toISOString();
+}
+
+export function local_time_of_iso(text) {
+  return new Date(text).toLocaleString();
+}
+
+// getMonth counts from 0.
+export function local_date(ms) {
+  const date = new Date(ms);
+  return [date.getFullYear(), date.getMonth() + 1, date.getDate()];
+}
+
+// The address is let go after a minute, when the browser has the file.
+export function download(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 export function current_hash() {
   return location.hash;
 }

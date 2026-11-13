@@ -1,6 +1,6 @@
 //// The page-level browser calls the app makes: the version and commit
 //// stamped into the page, `version.json`, the service worker, tab visibility, the clock,
-//// history and scrolling, ids and the chosen file.
+//// history and scrolling, ids, the chosen file and a file to download.
 
 import gleam/dynamic.{type Dynamic}
 import gleam/javascript/promise.{type Promise}
@@ -43,6 +43,23 @@ pub fn now_ms() -> Int
 /// `ms` as a date and time in the reader's own locale and time zone.
 @external(javascript, "./browser_ffi.mjs", "local_time")
 pub fn local_time(ms: Int) -> String
+
+/// `ms` as UTC in ISO 8601, such as `2026-11-13T15:42:00.000Z`.
+@external(javascript, "./browser_ffi.mjs", "iso_time")
+pub fn iso_time(ms: Int) -> String
+
+/// An ISO 8601 time as a date and time in the reader's own locale and time
+/// zone.
+@external(javascript, "./browser_ffi.mjs", "local_time_of_iso")
+pub fn local_time_of_iso(iso: String) -> String
+
+/// The year, month from 1 to 12, and day of `ms` on this device's clock.
+@external(javascript, "./browser_ffi.mjs", "local_date")
+pub fn local_date(ms: Int) -> #(Int, Int, Int)
+
+/// Hands `text` to the browser as a download called `name`.
+@external(javascript, "./browser_ffi.mjs", "download")
+pub fn download(name: String, text: String) -> Nil
 
 /// `history.back()`.
 @external(javascript, "./browser_ffi.mjs", "history_back")

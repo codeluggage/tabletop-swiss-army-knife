@@ -5,14 +5,16 @@ import gleeunit
 import lustre/element
 import simplifile
 import tabletop.{
-  type Model, Applying, Available, CardsMsg, FileNotRead, FileRead, Flags,
-  HashChanged, ListsMsg, Model, NeitherKind, NotAKnownKind, TextKind, UpToDate,
-  VersionFetched, ZipKind,
+  type Model, Applying, Available, BackupKind, BackupMsg, CardsMsg, FileNotRead,
+  FileRead, Flags, HashChanged, ListsMsg, Model, NeitherKind, NotAKnownKind,
+  TextKind, UpToDate, VersionFetched, ZipKind,
 }
+import tabletop/backup
 import tabletop/cards
 import tabletop/lists
 import tabletop/roster
 import tabletop/route
+import tabletop/storage
 import tabletop/zip_writer.{File, Store}
 
 pub fn main() -> Nil {
@@ -188,4 +190,82 @@ pub fn a_list_shows_its_cards_without_the_game_data_test() {
   assert string.contains(game_cards, "Crumb Trail")
   assert !string.contains(page, "Lid Down")
   assert !string.contains(page, "Spilt Milk")
+}
+
+fn backup_file() -> BitArray {
+  let assert Ok(bytes) =
+    simplifile.read_bits("test/fixtures/invented-backup.json")
+  bytes
+}
+
+pub fn a_backup_file_is_a_backup_test() {
+  let assert BackupKind(Ok(_)) = tabletop.file_kind(backup_file())
+  let broken = <<"{\"format\":\"tabletop-backup\"}":utf8>>
+  assert tabletop.file_kind(broken) == BackupKind(Error(backup.Broken))
+}
+
+pub fn a_backup_file_asks_before_anything_is_written_test() {
+  let #(model, _) =
+    tabletop.update(
+      model(UpToDate),
+      FileRead(Ok(#("tabletop-backup-2026-11-13.json", backup_file()))),
+    )
+  assert model.lists.problem == None
+  let page = tabletop.view(model) |> element.to_string
+  assert string.starts_with(
+    page,
+    "<main class=\"page\"><p class=\"version-line\">Version 2026.11.12.2041</p>",
+  )
+  assert string.contains(page, "<h1>Restore this backup?</h1>")
+  assert string.contains(page, "It holds 1 list, 1 game data set and 2 cards.")
+  assert string.contains(page, "with version 2026.11.13.1542.")
+  assert !string.contains(page, "About this device")
+  // Leaving the screen closes the question.
+  let #(model, _) = tabletop.update(model, HashChanged("#/", 0.0))
+  let page = tabletop.view(model) |> element.to_string
+  assert !string.contains(page, "Restore this backup?")
+  assert string.contains(page, "<h2>Backup</h2>")
+}
+
+pub fn a_backup_from_a_newer_app_is_refused_on_the_home_screen_test() {
+  let newer =
+    "{\"format\":\"tabletop-backup\",\"made\":\"\",\"release\":\"\",\"schema\":99,\"stores\":{}}"
+  let #(model, _) =
+    tabletop.update(
+      model(UpToDate),
+      FileRead(Ok(#("backup.json", <<newer:utf8>>))),
+    )
+  let page = tabletop.view(model) |> element.to_string
+  assert string.contains(
+    page,
+    "The app on this device is older than this backup and needs its update first.",
+  )
+  assert string.contains(page, "<h2>About this device</h2>")
+}
+
+pub fn a_restore_has_every_feature_read_its_stores_again_test() {
+  let assert Ok(text) = simplifile.read("test/fixtures/invented-list.json")
+  let assert Ok(decoded) = roster.decode(text)
+  let saved = lists.Saved(id: "l1", name: "", imported: 0, roster: Ok(decoded))
+  let #(model, _) =
+    tabletop.update(model(UpToDate), ListsMsg(lists.ListsLoaded(Ok([saved]))))
+  let model =
+    Model(..model, storage: Some(Error(storage.OpenFailed("not in a test"))))
+  let #(model, _) = tabletop.update(model, BackupMsg(backup.Restored(Ok(Nil))))
+  // Back to "Opening…" until the stores are read again.
+  assert model.lists.lists == None
+  assert model.data.sets == None
+  assert model.cards.cards == None
+}
+
+pub fn the_home_screen_has_a_backup_section_above_about_test() {
+  let home = tabletop.view(model(UpToDate)) |> element.to_string
+  let assert [_, after] = string.split(home, "<h2>Backup</h2>")
+  assert string.contains(after, "Save a backup file")
+  assert string.contains(after, "Last backup: reading…")
+  assert string.contains(after, "<h2>About this device</h2>")
+  let #(model, _) =
+    tabletop.update(model(UpToDate), BackupMsg(backup.LastLoaded(Ok(None))))
+  let home = tabletop.view(model) |> element.to_string
+  assert string.contains(home, "Last backup: never")
 }

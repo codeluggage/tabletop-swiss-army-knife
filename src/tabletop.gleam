@@ -4,7 +4,8 @@
 //// reload when a newer build is out. Each feature keeps its own state,
 //// messages and screens in its own module, and the shell sends it the routes
 //// it owns. The list feature is `tabletop/lists`, the game data feature
-//// `tabletop/data`, the cards feature `tabletop/cards`.
+//// `tabletop/data`, the cards feature `tabletop/cards`, the backup feature
+//// `tabletop/backup`.
 
 import gleam/bit_array
 import gleam/bool
@@ -22,6 +23,7 @@ import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
+import tabletop/backup
 import tabletop/browser
 import tabletop/cards
 import tabletop/data
@@ -65,6 +67,7 @@ pub type Model {
     lists: lists.State,
     data: data.State,
     cards: cards.State,
+    backup: backup.State,
     /// How far down each screen was when it was left, keyed by its hash.
     scroll: Dict(String, Float),
     update: Update,
@@ -80,6 +83,8 @@ pub type Update {
 /// What a chosen file is, from its bytes.
 pub type FileKind {
   ZipKind
+  /// JSON that says it is a backup: the backup, or why it cannot be one.
+  BackupKind(Result(backup.Backup, backup.ReadError))
   TextKind(String)
   NeitherKind
 }
@@ -104,6 +109,7 @@ pub type Msg {
   ListsMsg(lists.Msg)
   DataMsg(data.Msg)
   CardsMsg(cards.Msg)
+  BackupMsg(backup.Msg)
 }
 
 const first_opened_key = "first_opened"
@@ -121,6 +127,7 @@ pub fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       lists: lists.init(),
       data: data.init(),
       cards: cards.init(),
+      backup: backup.init(),
       scroll: dict.new(),
       update: UpToDate,
     )
@@ -141,9 +148,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       Model(..model, storage: Some(Ok(db))),
       effect.batch([
         effects.from_promise(fn() { load_first_opened(db) }, FirstOpenedLoaded),
-        lists.load(Ok(db)) |> effect.map(ListsMsg),
-        data.load(Ok(db)) |> effect.map(DataMsg),
-        cards.load(Ok(db)) |> effect.map(CardsMsg),
+        backup.load(Ok(db)) |> effect.map(BackupMsg),
+        load_features(Ok(db)),
       ]),
     )
     StorageOpened(Error(error)) -> #(
@@ -153,9 +159,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         first_opened: Some(Error(error)),
       ),
       effect.batch([
-        lists.load(Error(error)) |> effect.map(ListsMsg),
-        data.load(Error(error)) |> effect.map(DataMsg),
-        cards.load(Error(error)) |> effect.map(CardsMsg),
+        backup.load(Error(error)) |> effect.map(BackupMsg),
+        load_features(Error(error)),
       ]),
     )
     FirstOpenedLoaded(result) -> #(
@@ -203,6 +208,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           lists: lists.screen_changed(model.lists),
           data: data.screen_changed(model.data),
           cards: cards.screen_changed(model.cards),
+          backup: backup.screen_changed(model.backup),
         )
         |> enter_data
       #(model, effect.batch([scroll_to(top), entered]))
@@ -213,6 +219,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         file_problem: None,
         lists: lists.file_chosen(model.lists),
         data: data.file_chosen(model.data),
+        backup: backup.screen_changed(model.backup),
       ),
       effects.from_promise(fn() { browser.read_chosen_file(input) }, FileRead),
     )
@@ -224,6 +231,10 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       case file_kind(bytes) {
         ZipKind ->
           data.import_zip(model.data, file_name, bytes) |> from_data(model)
+        BackupKind(read) -> #(
+          Model(..model, backup: backup.file_read(model.backup, read)),
+          effect.none(),
+        )
         TextKind(text) ->
           lists.import_file(model.lists, model.storage, file_name, text)
           |> from_lists(model)
@@ -248,15 +259,46 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     }
     CardsMsg(msg) ->
       cards.update(model.cards, msg, model.storage) |> from_cards(model)
+    BackupMsg(msg) -> {
+      let #(model, done) =
+        backup.update(model.backup, msg, model.storage) |> from_backup(model)
+      case msg, model.storage {
+        // Every feature reads its stores again, so the restored records show.
+        backup.Restored(Ok(Nil)), Some(db) -> #(
+          Model(
+            ..model,
+            lists: lists.init(),
+            data: data.init(),
+            cards: cards.init(),
+          ),
+          effect.batch([done, load_features(db)]),
+        )
+        _, _ -> #(model, done)
+      }
+    }
   }
 }
 
-/// A zip by its signature, text when the bytes are UTF-8, else neither.
+/// Each feature reads what it keeps in storage, as when the app opens.
+fn load_features(db: Result(Database, StorageError)) -> Effect(Msg) {
+  effect.batch([
+    lists.load(db) |> effect.map(ListsMsg),
+    data.load(db) |> effect.map(DataMsg),
+    cards.load(db) |> effect.map(CardsMsg),
+  ])
+}
+
+/// A zip by its signature, a backup by its `format`, other text when the
+/// bytes are UTF-8, else neither.
 pub fn file_kind(bytes: BitArray) -> FileKind {
   // A zip is never decoded as text.
   use <- bool.guard(zip.is_zip(bytes), ZipKind)
   case bit_array.to_string(bytes) {
-    Ok(text) -> TextKind(text)
+    Ok(text) ->
+      case backup.read(text, schema: storage.schema_version()) {
+        Error(backup.NotABackup) -> TextKind(text)
+        read -> BackupKind(read)
+      }
     Error(Nil) -> NeitherKind
   }
 }
@@ -279,6 +321,14 @@ fn from_cards(
   model: Model,
 ) -> #(Model, Effect(Msg)) {
   #(Model(..model, cards: step.0), effect.map(step.1, CardsMsg))
+}
+
+/// The backup feature's new state into the model, its effect into the app's.
+fn from_backup(
+  step: #(backup.State, Effect(backup.Msg)),
+  model: Model,
+) -> #(Model, Effect(Msg)) {
+  #(Model(..model, backup: step.0), effect.map(step.1, BackupMsg))
 }
 
 /// The list feature's new state into the model, its effect into the app's.
@@ -430,6 +480,10 @@ fn cards_view(elements: List(Element(cards.Msg))) -> List(Element(Msg)) {
   list.map(elements, element.map(_, CardsMsg))
 }
 
+fn backup_view(elements: List(Element(backup.Msg))) -> List(Element(Msg)) {
+  list.map(elements, element.map(_, BackupMsg))
+}
+
 /// The list screens' links into game data and their cards. The list feature
 /// never sees the data or cards features.
 fn data_links(model: Model) -> lists.DataLinks {
@@ -455,7 +509,11 @@ fn data_links(model: Model) -> lists.DataLinks {
   )
 }
 
+/// The home screen, or the question about a chosen backup file in its place.
 fn home(model: Model) -> List(Element(Msg)) {
+  use <- bool.lazy_guard(backup.asking(model.backup), fn() {
+    backup.question_page(model.backup) |> backup_view
+  })
   list.flatten([
     [
       html.h1([], [html.text("Tabletop")]),
@@ -478,7 +536,9 @@ fn home(model: Model) -> List(Element(Msg)) {
           [html.text("Import a file")],
         ),
         html.p([attribute.class("note")], [
-          html.text("A list exported as JSON, or game data as one zip file."),
+          html.text(
+            "A list exported as JSON, game data as one zip file, or a backup file.",
+          ),
         ]),
       ]),
       case model.file_problem {
@@ -489,9 +549,11 @@ fn home(model: Model) -> List(Element(Msg)) {
           ])
       },
     ],
+    backup_view(backup.status(model.backup)),
     data_view(data.status(model.data)),
     lists_view(lists.home(model.lists)),
     data_view(data.home(model.data)),
+    backup_view(backup.section(model.backup)),
     [
       html.section([attribute.class("about")], [
         html.h2([], [html.text("About this device")]),
@@ -513,7 +575,8 @@ fn home(model: Model) -> List(Element(Msg)) {
 fn describe_file_problem(problem: FileProblem) -> String {
   case problem {
     FileNotRead(reason) -> "That file could not be read. " <> reason
-    NotAKnownKind -> "That file is neither a JSON list nor a zip file."
+    NotAKnownKind ->
+      "That file is not a JSON list, a zip file or a backup file."
   }
 }
 
