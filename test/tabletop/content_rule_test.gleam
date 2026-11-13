@@ -20,6 +20,8 @@ const data_extensions = [
 fn allowed(path: String) -> Bool {
   string.starts_with(path, "test/fixtures/")
   || string.starts_with(path, ".github/workflows/")
+  // The Codex hooks that run the checks.
+  || path == ".codex/hooks.json"
   // Local Claude Code settings, gitignored, never committed.
   || path == ".claude/settings.local.json"
 }
@@ -72,6 +74,8 @@ pub fn breaches_test() {
   assert breaches("src/tabletop.gleam", 100) == []
   assert breaches("test/fixtures/invented-game.json", 100) == []
   assert breaches(".github/workflows/deploy.yml", 100) == []
+  assert breaches(".codex/hooks.json", 100) == []
+  assert list.length(breaches(".codex/units.json", 100)) == 1
   assert breaches("web/manifest.webmanifest", 100) == []
   assert breaches("json", 100) == []
   assert list.length(breaches("units.JSON", 100)) == 1

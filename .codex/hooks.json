@@ -1,0 +1,31 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh .codex/hooks/check.sh",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File .codex\\hooks\\check.ps1",
+            "timeout": 120,
+            "statusMessage": "gleam check"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh .codex/hooks/gate.sh",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File .codex\\hooks\\gate.ps1",
+            "timeout": 300,
+            "statusMessage": "gleam check, test and format"
+          }
+        ]
+      }
+    ]
+  }
+}

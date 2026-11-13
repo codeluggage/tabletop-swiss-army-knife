@@ -150,6 +150,18 @@ A test enforces the file half of this rule: `gleam test` fails when a data file 
 
 A push to `main` runs the type check, the tests and the build, and publishes the site. A red run publishes nothing. After a push, watch the run and report the result.
 
+### Working with the person
+
+The person you work for plays tabletop games and is not a developer. They read your replies in the ChatGPT app, often on Windows. `START-HERE.md` is their guide.
+
+- Do one change at a time. Before you start, say in one or two plain sentences what you will change.
+- After you edit a `.gleam` file, run `gleam check` and fix every error. A hook in `.codex/` runs it too.
+- Before you finish, run `gleam format src test dev` and `gleam test`. Finish only when both pass. A hook checks this too, and sends a failure back to you.
+- Then commit with a short lowercase message that names nothing from a game, and run `git push origin main`.
+- Never edit anything in `.codex/`. A change there turns the checks off until the person trusts the hooks again.
+- Say in plain words what changed, with no code unless asked, and what to open and look at once the site has updated.
+- When a request would put game content into the code (rules text, stats, points, names), build the screen where the person adds it instead, and say why in one sentence.
+
 ### Commands
 
 The same commands on Windows, macOS and Linux, with only Git, Gleam and Node installed:
@@ -188,6 +200,8 @@ The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026
 - `test/` - gleeunit tests, one file per module, plus `content_rule_test.gleam`. Test data goes in `test/fixtures/`.
 - `test/tabletop/zip_writer.gleam` + `zip_writer_ffi.mjs` - writes the zips the tests read. `data_set_test.gleam` goes from a zip to pages on `test/fixtures/data/`, and on `local-data/` when it is there.
 - `dist/` - build output, ignored by git.
+- `.codex/hooks.json` + `hooks/` - Codex hooks: `gleam check` after each edit, and check, test and format before the agent finishes. Each hook has a `.sh` for macOS and Linux and a `.ps1` for Windows.
+- `START-HERE.md` - the person's guide to changing the app with Codex on Windows.
 
 ### Adding a store
 

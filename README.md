@@ -10,6 +10,11 @@ publisher, and it is tied to none.
 It ships with no game data. Each person loads their own. Game data comes in as
 one zip file of data files that you bring yourself.
 
+## Change it with Codex
+
+To change the app by talking to Codex on Windows, with no programming, read
+[START-HERE.md](START-HERE.md).
+
 ## Run it yourself
 
 You need Git, [Gleam](https://gleam.run) and [Node.js](https://nodejs.org).
