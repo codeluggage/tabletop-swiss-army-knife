@@ -148,19 +148,52 @@ A test enforces the file half of this rule: `gleam test` fails when a data file 
 
 ### Shipping
 
-A push to `main` runs the type check, the tests and the build, and publishes the site. A red run publishes nothing. After a push, watch the run and report the result.
+`gleam run -m tabletop/publish` is the one way to the live site. A push to `main` runs the type check, the tests and the build in GitHub Actions. Before a deploy, Actions compares the new version with the live site and stops when the new version is not later or the storage schema number is lower. After a deploy, Actions tags the commit with the version. A failed check, test, build or live check publishes nothing. When only the tag fails, the site is already live: publish says so, and the versions command does not list that version.
 
 ### Working with the person
 
-The person you work for plays tabletop games and is not a developer. They read your replies in the ChatGPT app, often on Windows. `START-HERE.md` is their guide.
+The person you work for plays tabletop games and is not a developer. They write to you in everyday words, often from a phone. They see the result in the app on their phone. `START-HERE.md` is their guide.
 
-- Do one change at a time. Before you start, say in one or two plain sentences what you will change.
-- After you edit a `.gleam` file, run `gleam check` and fix every error. A hook in `.codex/` runs it too.
-- Before you finish, run `gleam format src test dev` and `gleam test`. Finish only when both pass. A hook checks this too, and sends a failure back to you.
-- Then commit with a short lowercase message that names nothing from a game, and run `git push origin main`.
-- Never edit anything in `.codex/`. A change there turns the checks off until the person trusts the hooks again.
-- Say in plain words what changed, with no code unless asked, and what to open and look at once the site has updated.
-- When a request would put game content into the code (rules text, stats, points, names), build the screen where the person adds it instead, and say why in one sentence.
+#### What a request means
+
+- A request for a change means: make the change and make it live. Do not ask whether to publish.
+- "What do you think?", "how would you do it?" or "show me an idea" means: answer in words. Change nothing.
+- "Put it back", "undo that" or "the way it was in 1542" means: bring the old behaviour back as a new change, and make it live. See "Undo" below.
+
+#### Make a change live
+
+1. Work in this folder, on the branch `main`. One folder, one branch, one site. The person has no local preview, so the live site is where they look.
+2. Start with `git pull --no-rebase origin main`, so you have the newest files.
+3. Say in one or two plain sentences what you will change. Then make that one change.
+4. After you edit a `.gleam` file, run `gleam check` and fix every error.
+5. Run `gleam format src test dev`. Commit with a short lowercase message that names nothing from a game.
+6. Run `gleam run -m tabletop/publish`. It checks the code, publishes it, and waits until the site is live.
+7. If publish stops, read its last lines. Fix what they name, commit, and run publish again. If the lines say to ask the person who helps with the project, tell the person exactly that and stop.
+8. Reply with the last two lines that publish printed, and one sentence that says where in the app to look.
+
+`gleam run -m tabletop/publish` is the only way you publish. Do not run `git push` yourself.
+
+#### Versions
+
+- The app shows its version at the top of every screen, like `2026.11.13.1542`. It is the date and the time of publishing, on the UK clock.
+- The person names a version by its last four digits. "I'm on 1542" means the version that ends in `1542`.
+- To find a version, run `gleam run -m tabletop/versions 1542`. It prints the versions that match and what changed in each.
+- When the person names a time in words, such as "an hour ago" or "before dinner", run `gleam run -m tabletop/versions`, show the newest five with what changed, and ask which one they mean.
+- The build makes each version. You read it from the output of publish. You do not write one.
+
+#### Undo
+
+1. Find the version the person means with the versions command.
+2. Find the commits that made the change, with `git log`.
+3. Run `git revert` on those commits, newest first. Then follow "Make a change live" from step 4.
+4. Leave `upgrades` in `src/tabletop/storage.gleam` as it is, even when the change you undo added a store. Remove the screens and keep the store. A phone that already has the store cannot open an app that has fewer.
+
+#### Always
+
+- When a request would put game content into the code (rules text, stats, points, names), build the screen where the person adds it themselves, and say why in one sentence.
+- Leave `.codex/` alone. A change there turns the checks off until the person trusts the hooks again.
+- Use plain words in every reply. Show code only when the person asks for it.
+- When a command asks for a permission or a login, tell the person in one sentence what to tap or type.
 
 ### Commands
 
@@ -173,19 +206,22 @@ The same commands on Windows, macOS and Linux, with only Git, Gleam and Node ins
 | `gleam run -m tabletop/build` | compile, then write the site to `dist/` |
 | `gleam run -m tabletop/serve [port]` | serve `dist/` on localhost, port 8080 unless given |
 | `gleam format src test dev` | format |
+| `gleam run -m tabletop/publish` | take the saved work on `main` to the live site, wait until it is live, and print which version is live |
+| `gleam run -m tabletop/versions [digits]` | the versions that went live, newest first, each with its commit's first line; with digits, only the ones that match, such as `1542` |
+| `gleam run -m tabletop/live_check` | after a build: may `dist/` replace the live site? Exits 1 with the reason when it may not |
 
-The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026-11-12.204107.abc1234`, into `index.html`, `version.json` and the service worker's cache name. It copies only the compiled modules the app imports, found by following imports from `tabletop/tabletop.mjs`, and lists them for the service worker to keep offline.
+The build stamps a version, the minute of the build on the London clock such as `2026.11.13.1542`, into `index.html`, `version.json` and the service worker's cache name, and the short commit into `index.html`. The app shows the version at the top of every screen, and the commit in "About this device". `version.json` holds `release` (the version), `commit`, `schema` (the storage schema version) and `version`. `version` is the old stamp, `<UTC date>.<UTC time>.<short commit>` such as `2026-11-13.154207.776d09c`. It stays because an app installed before versions reads only that key to offer its Reload bar. No new code reads it. The build copies only the compiled modules the app imports, found by following imports from `tabletop/tabletop.mjs`, and lists them for the service worker to keep offline.
 
 ### Layout
 
-- `src/tabletop.gleam` - the shell: flags, the version and the update bar, the service worker, opening storage, the route and scroll, the chosen file and which feature gets it by its kind, the home screen's frame and "About this device", and the wiring of each feature, the list screens' links into game data and their cards included, and the cards on the data set and node screens.
+- `src/tabletop.gleam` - the shell: flags, the version line at the top of every screen and the update bar, the service worker, opening storage, the route and scroll, the chosen file and which feature gets it by its kind, the home screen's frame and "About this device", and the wiring of each feature, the list screens' links into game data and their cards included, and the cards on the data set and node screens.
 - `src/tabletop/lists.gleam` - the list feature: its state, messages and effects, importing and deleting lists, and the saved lists, list, unit and rule screens.
 - `src/tabletop/data.gleam` - the game data feature: its state, messages and effects, importing a zip one file at a time, building an older index again, opening a catalogue's scope, deleting a data set, the data set, catalogue and node screens with a place for the cards, and the links from a list into the data.
 - `src/tabletop/cards.gleam` - the cards feature: its state, messages and effects, the card form, importing cards from a table file, deleting a card, which cards show for a place, a list and a unit, and the card screens and sections.
 - `src/tabletop/table.gleam` - the text of a table file as rows of cells: tabs, commas, semicolons or pipes, whichever the first line holds most, quoted cells as in RFC 4180.
 - `src/tabletop/effects.gleam` - effects the shell and the features share: a promise's value as a message.
 - `src/tabletop/storage.gleam` + `storage_ffi.mjs` - IndexedDB behind promises of `Result`: JSON and bytes, many writes in one transaction, and the persistent storage request.
-- `src/tabletop/browser.gleam` + `browser_ffi.mjs` - page-level browser calls: the stamped version, `version.json`, the service worker, tab visibility, the clock, history and scroll, random ids, the chosen file's name and bytes, and Windows-1252 bytes as text.
+- `src/tabletop/browser.gleam` + `browser_ffi.mjs` - page-level browser calls: the stamped version and commit, `version.json`, the service worker, tab visibility, the clock, history and scroll, random ids, the chosen file's name and bytes, and Windows-1252 bytes as text.
 - `src/tabletop/roster.gleam` - the imported list file: its types, the decoder, and the pure functions the list screens use (units, settings, costs, categories, a unit's profiles and rules).
 - `src/tabletop/sheet.gleam` - the shapes a datasheet shows, whichever file they come from (costs, categories, profiles, rules, entry kinds), their decoders, and profile tables.
 - `src/tabletop/text.gleam` - text to segments: `**bold**` runs and names that link to a target each feature picks.
@@ -196,14 +232,20 @@ The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026
 - `src/tabletop/scope.gleam` - the decoded files one catalogue reaches: every node by id, what is hidden when nothing is chosen, and the page of a node as data.
 - `src/tabletop/sheet_view.gleam` - the views every feature shares: profile tables, text with links, rule chips, costs, back links, the not found message and storage errors in words.
 - `src/tabletop/route.gleam` - the screen in the URL hash: parse, `to_hash`, going to a screen, and the `hashchange` listener, and the place a card belongs to.
-- `src/tabletop/version.gleam` - the build version: parse, compare, `version.json`.
+- `src/tabletop/version.gleam` - the version a person can say: parse, compare, and `version.json` written and read.
 - `web/` - the static shell: `index.html`, `manifest.webmanifest`, `sw.js`, `style.css`, `icons/`. `__VERSION__` and `__FILES__` are placeholders the build replaces.
 - `dev/tabletop/build.gleam`, `serve.gleam` + `node_ffi.mjs` - the build and serve commands, run on Node.
+- `dev/tabletop/publish.gleam` - the publish command: take in GitHub's `main`, run the checks and the build, push, wait for the deploy run, then wait until the live `version.json` shows the commit. Every message it prints is in `say`.
+- `dev/tabletop/versions.gleam` - the versions command: the version tags with their commit's first line, and which ones match the digits a person says.
+- `dev/tabletop/live_check.gleam` - the live check: may the version in `dist/version.json` replace the live one.
+- `dev/tabletop/site.gleam` - the GitHub repository from the `origin` remote, the live site's address, and the live `version.json`.
+- `.github/workflows/deploy.yml` - on a push to `main`: check, test, build, live check, deploy to GitHub Pages, then tag the commit with its version. A pull request runs only the check and the tests.
 - `test/` - gleeunit tests, one file per module, plus `content_rule_test.gleam`. Test data goes in `test/fixtures/`.
 - `test/tabletop/zip_writer.gleam` + `zip_writer_ffi.mjs` - writes the zips the tests read. `data_set_test.gleam` goes from a zip to pages on `test/fixtures/data/`, and on `local-data/` when it is there.
 - `dist/` - build output, ignored by git.
 - `.codex/hooks.json` + `hooks/` - Codex hooks: `gleam check` after each edit, and check, test and format before the agent finishes. Each hook has a `.sh` for macOS and Linux and a `.ps1` for Windows.
 - `START-HERE.md` - the person's guide to changing the app with Codex on Windows.
+- `LICENSE` - the GNU General Public License, version 3. The app is under version 3 or later.
 
 ### Adding a store
 
