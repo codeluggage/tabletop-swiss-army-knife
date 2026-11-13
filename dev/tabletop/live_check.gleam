@@ -20,8 +20,9 @@ pub fn main() -> Nil {
       let _ = {
         use live <- promise.map(site.live_version(repository))
         case decide(new, live) {
-          Ok(sentence) -> io.println(sentence)
-          Error(sentence) -> refuse(sentence)
+          MayGoLive(sentence) -> io.println(sentence)
+          NotLater(sentence) | OlderLayout(sentence) | CannotTell(sentence) ->
+            refuse(sentence)
         }
       }
       Nil
@@ -29,24 +30,35 @@ pub fn main() -> Nil {
   }
 }
 
+/// The live check's answer, each with one sentence that says what was found.
+/// Only `MayGoLive` lets the site go live.
+pub type Verdict {
+  MayGoLive(String)
+  /// The new version is the live one or older.
+  NotLater(String)
+  /// The new version keeps saved data at a lower storage schema number.
+  OlderLayout(String)
+  /// The live version could not be read.
+  CannotTell(String)
+}
+
 /// May the site stamped `new` replace the live one? `live` is the answer to
-/// the request for the live `version.json`: #(HTTP status, body). Ok with
-/// what was found, or Error with why not, one sentence each.
-pub fn decide(
-  new: Stamp,
-  live: Result(#(Int, String), String),
-) -> Result(String, String) {
+/// the request for the live `version.json`: #(HTTP status, body).
+pub fn decide(new: Stamp, live: Result(#(Int, String), String)) -> Verdict {
   let release = version.to_string(new.release)
   case live {
-    Error(reason) -> Error("The live version could not be read: " <> reason)
+    Error(reason) ->
+      CannotTell("The live version could not be read: " <> reason)
     Ok(#(404, _)) ->
-      Ok("There is no live site yet, so version " <> release <> " may go live.")
+      MayGoLive(
+        "There is no live site yet, so version " <> release <> " may go live.",
+      )
     Ok(#(200, body)) ->
       case version.stamp_from_json(body) {
         Error(Nil) ->
-          Error("The live version.json is not one this check reads.")
+          CannotTell("The live version.json is not one this check reads.")
         Ok(None) ->
-          Ok(
+          MayGoLive(
             "The live site is from before versions like "
             <> release
             <> ", so it may be replaced.",
@@ -58,7 +70,7 @@ pub fn decide(
             new.schema < live.schema
           {
             False, _ ->
-              Error(
+              NotLater(
                 "Version "
                 <> release
                 <> " is not later than the live version "
@@ -66,7 +78,7 @@ pub fn decide(
                 <> ", so it may not replace it.",
               )
             True, True ->
-              Error(
+              OlderLayout(
                 "Version "
                 <> release
                 <> " keeps saved data in an older layout ("
@@ -78,7 +90,7 @@ pub fn decide(
                 <> "), so it may not replace it.",
               )
             True, False ->
-              Ok(
+              MayGoLive(
                 "Version "
                 <> release
                 <> " may replace the live version "
@@ -89,7 +101,7 @@ pub fn decide(
         }
       }
     Ok(#(status, _)) ->
-      Error(
+      CannotTell(
         "The live site answered "
         <> int.to_string(status)
         <> " when asked for its version.json.",
@@ -97,7 +109,8 @@ pub fn decide(
   }
 }
 
-fn read_built() -> Result(Stamp, String) {
+/// The stamp of the site the build wrote to `dist/`.
+pub fn read_built() -> Result(Stamp, String) {
   let stamp =
     simplifile.read(built)
     |> result.replace_error(Nil)
