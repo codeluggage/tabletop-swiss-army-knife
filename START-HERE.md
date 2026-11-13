@@ -27,6 +27,15 @@ gh auth login
 
 Choose `GitHub.com`, then `HTTPS`, then log in with a web browser.
 
+Then tell Git who you are. Paste these two lines one at a time, with your own GitHub name in both:
+
+```powershell
+git config --global user.name "YOUR-GITHUB-NAME"
+git config --global user.email "YOUR-GITHUB-NAME@users.noreply.github.com"
+```
+
+This address keeps your real email out of the public project.
+
 ## 2. Get the project
 
 ```powershell
