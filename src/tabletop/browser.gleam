@@ -59,6 +59,11 @@ pub fn manual_scroll_restoration() -> Nil
 @external(javascript, "./browser_ffi.mjs", "random_id")
 pub fn random_id() -> String
 
+/// `bytes` read as Windows-1252 text, as a spreadsheet on Windows often
+/// saves a table. Every byte is some character in it.
+@external(javascript, "./browser_ffi.mjs", "windows_1252_to_string")
+pub fn windows_1252_to_string(bytes: BitArray) -> String
+
 /// The name and bytes of the file chosen in the file `input` element. Clears
 /// the input, so choosing the same file again fires a change.
 @external(javascript, "./browser_ffi.mjs", "read_chosen_file")

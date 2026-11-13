@@ -84,7 +84,6 @@ pub type Problem {
   NotSaved(StorageError)
   NotDeleted(StorageError)
   FileNotRead(reason: String)
-  NotText
   NoRows
   NoStorage
 }
@@ -221,14 +220,18 @@ pub fn update(
       State(..state, problem: Some(FileNotRead(reason))),
       effect.none(),
     )
-    TableRead(place:, result: Ok(#(file_name, bytes))) ->
-      case result.map(bit_array.to_string(bytes), table.parse) {
-        Error(Nil) -> #(State(..state, problem: Some(NotText)), effect.none())
-        Ok(table.Table(header: [], ..)) -> #(
+    TableRead(place:, result: Ok(#(file_name, bytes))) -> {
+      // Text that is not UTF-8 is most likely from a spreadsheet on Windows.
+      let text = case bit_array.to_string(bytes) {
+        Ok(text) -> text
+        Error(Nil) -> browser.windows_1252_to_string(bytes)
+      }
+      case table.parse(text) {
+        table.Table(header: [], ..) -> #(
           State(..state, problem: Some(NoRows)),
           effect.none(),
         )
-        Ok(read) -> {
+        read -> {
           let pending =
             Pending(place:, file_name:, table: read, columns: columns(read))
           #(State(..state, pending: Some(pending)), {
@@ -237,6 +240,7 @@ pub fn update(
           })
         }
       }
+    }
     ColumnChosen(field:, column:) ->
       case state.pending {
         Some(pending) -> {
@@ -1046,8 +1050,6 @@ fn describe_problem(problem: Problem) -> String {
       "The card could not be deleted. "
       <> sheet_view.describe_storage_error(error)
     FileNotRead(reason) -> "That file could not be read. " <> reason
-    NotText ->
-      "That file is not UTF-8 text. In a spreadsheet, save it as CSV UTF-8."
     NoRows -> "That file has no rows."
     NoStorage -> "Storage is not open on this device, so cards cannot change."
   }

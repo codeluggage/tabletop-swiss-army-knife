@@ -186,15 +186,31 @@ pub fn an_import_is_one_write_of_every_card_test() {
   })
 }
 
-pub fn a_file_that_is_not_text_says_so_test() {
+/// The table a file of `bytes` opens on the import screen.
+fn opened(bytes: BitArray) -> cards.Pending {
   let #(state, _) =
     cards.update(
       cards.init(),
-      TableRead(Game("sys-picnic"), Ok(#("cards.csv", <<255, 254, 0>>))),
+      TableRead(Game("sys-picnic"), Ok(#("cards.csv", bytes))),
       None,
     )
-  assert state.problem == Some(cards.NotText)
-  assert state.pending == None
+  let assert Some(pending) = state.pending
+  pending
+}
+
+pub fn a_byte_order_mark_still_picks_the_first_column_test() {
+  let pending = opened(<<0xEF, 0xBB, 0xBF, "Name;Effect\nKettle;Pour":utf8>>)
+  assert pending.columns == dict.from_list([#(Name, 0), #(Effect, 1)])
+}
+
+pub fn a_file_that_is_not_utf8_is_read_as_windows_1252_test() {
+  // A curly quote on each side, and a dash.
+  let bytes = <<
+    "Name,Effect\r\nKettle,":utf8, 0x93, "Pour":utf8, 0x94, " ":utf8, 0x96,
+    " then wait":utf8,
+  >>
+  assert opened(bytes).table.rows
+    == [["Kettle", "\u{201C}Pour\u{201D} \u{2013} then wait"]]
 }
 
 // --- Cards for a unit -------------------------------------------------------

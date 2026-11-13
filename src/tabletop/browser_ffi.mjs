@@ -1,6 +1,6 @@
 // Page-level browser calls for browser.gleam: the version stamped into the
 // page, the service worker, the clock. No decisions here; Gleam makes them.
-import { Result$Ok, Result$Error, BitArray$BitArray } from "../gleam.mjs";
+import { Result$Ok, Result$Error, BitArray$BitArray, BitArray$BitArray$data } from "../gleam.mjs";
 
 export function running_version() {
   return document.querySelector('meta[name="tabletop-version"]').content;
@@ -80,6 +80,12 @@ export function manual_scroll_restoration() {
 
 export function random_id() {
   return crypto.randomUUID();
+}
+
+// stream: true is only for Node 22, whose one-shot decode of windows-1252 is
+// Latin-1. A single-byte encoding leaves nothing for a later call.
+export function windows_1252_to_string(bytes) {
+  return new TextDecoder("windows-1252").decode(BitArray$BitArray$data(bytes), { stream: true });
 }
 
 // The file chosen in a file input: its name and bytes. Clears the input, so
