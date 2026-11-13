@@ -898,10 +898,7 @@ fn card_view(
         )
       False -> html.p([attribute.class("card-name")], [name])
     },
-    case card.cost {
-      "" -> element.none()
-      cost -> html.p([attribute.class("card-cost")], [html.text(cost)])
-    },
+    line(Cost, card.cost),
     line(When, card.when),
     line(Target, card.target),
     line(Effect, card.effect),
