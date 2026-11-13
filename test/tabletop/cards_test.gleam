@@ -233,7 +233,7 @@ pub fn a_list_groups_its_cards_by_node_then_the_whole_game_test() {
       card("c2", "Second Pour", "", Node("sys-picnic", "cat-teapot", "e-host")),
       card("c3", "Lid Down", "", Node("sys-picnic", "cat-teapot", "e-other")),
     ])
-  let nodes = [#(Node("sys-picnic", "cat-teapot", "e-host"), "Sunday Picnic")]
+  let nodes = [#("e-host", "Sunday Picnic")]
   let page = render([cards.list_section(state, "sys-picnic", nodes)])
   let assert [_, after_node] = string.split(page, "<h3>Sunday Picnic</h3>")
   let assert [between, after_game] =

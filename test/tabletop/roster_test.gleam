@@ -58,7 +58,7 @@ pub fn a_roster_of_the_wrong_shape_says_where_test() {
 }
 
 pub fn an_empty_roster_still_decodes_test() {
-  assert roster.decode("{\"roster\": {}}") == Ok(Roster("", [], []))
+  assert roster.decode("{\"roster\": {}}") == Ok(Roster("", "", [], []))
   let only_settings =
     "{\"roster\": {\"forces\": [{\"selections\": [{\"id\": \"a\", \"name\": \"A\", \"type\": \"upgrade\"}]}]}}"
   let assert Ok(decoded) = roster.decode(only_settings)
@@ -67,6 +67,7 @@ pub fn an_empty_roster_still_decodes_test() {
 }
 
 pub fn ids_the_file_has_are_kept_test() {
+  assert fixture().game_system_id == "sys-picnic"
   let assert [force] = fixture().forces
   assert force.catalogue_id == "cat-teapot"
   assert unit("u-captain").entry_ids == ["e-captain"]

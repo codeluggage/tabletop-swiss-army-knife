@@ -52,10 +52,11 @@ pub type Problem {
 /// Links from a list into game data, and the cards that go with it, which
 /// the shell makes. `entry` and `value` take a force's catalogue id and a
 /// selection's entry ids, and give a link or nothing: `entry` for a unit or a
-/// setting, `value` for a setting's chosen value. `cards` takes a force's
-/// catalogue id and its settings' chosen values, each a name and entry ids,
-/// and gives the force's cards. `unit_cards` takes the same and a unit's
-/// keywords, and gives the cards for that unit.
+/// setting, `value` for a setting's chosen value. `cards` takes the list's
+/// game system id and a force's chosen setting values, each a name and entry
+/// ids, and gives the force's cards. `unit_cards` takes the same and a unit's
+/// keywords, and gives the cards for that unit. The cards need no game data
+/// loaded.
 pub type DataLinks {
   DataLinks(
     entry: fn(String, List(String)) -> Option(String),
@@ -375,12 +376,19 @@ pub fn list_page(
     sheet_view.back_link(route.Home, "All lists"),
     html.h1([], [html.text(title(saved))]),
     sheet_view.costs(roster.totals(decoded)),
-    ..list.map(decoded.forces, force_section(saved.id, _, titled, links))
+    ..list.map(decoded.forces, force_section(
+      saved.id,
+      decoded.game_system_id,
+      _,
+      titled,
+      links,
+    ))
   ]
 }
 
 fn force_section(
   list_id: String,
+  game_system_id: String,
   force: roster.Force,
   titled: Bool,
   links: DataLinks,
@@ -445,7 +453,7 @@ fn force_section(
   html.section([attribute.class("force")], [
     title,
     settings,
-    links.cards(force.catalogue_id, chosen_values(force)),
+    links.cards(game_system_id, chosen_values(force)),
     rules,
     ..units
   ])
@@ -530,7 +538,7 @@ pub fn unit_page(
                 ]),
               ])
           },
-          links.unit_cards(catalogue_id, values, keywords),
+          links.unit_cards(decoded.game_system_id, values, keywords),
           case unit.selections {
             [] -> element.none()
             children ->

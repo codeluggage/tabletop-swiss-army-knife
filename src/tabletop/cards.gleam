@@ -509,18 +509,6 @@ fn by_name(cards: List(Card)) -> List(Card) {
   list.sort(cards, fn(a, b) { string.compare(a.name, b.name) })
 }
 
-/// The name of the node with this id among `nodes`, places with their names.
-fn node_name(
-  nodes: List(#(Place, String)),
-  node_id: String,
-) -> Result(String, Nil) {
-  use #(place, name) <- list.find_map(nodes)
-  case place {
-    Node(node_id: id, ..) if id == node_id -> Ok(name)
-    _ -> Error(Nil)
-  }
-}
-
 // --- Views ------------------------------------------------------------------
 
 /// The card sections of a node screen: the node's own cards, then, when the
@@ -573,19 +561,20 @@ pub fn game_section(state: State, set_id: String) -> List(Element(Msg)) {
   [place_section(state, Game(set_id:), "Cards for the whole game", plain)]
 }
 
-/// The cards section of a list's force: the cards of `nodes`, each the place
-/// a chosen setting value links to with its name, then the whole game's
-/// cards of the data set `set_id`. Nothing when there are none.
+/// The cards section of a list's force: the cards of `nodes`, each the node
+/// id a chosen setting value links to with the value's name, then the whole
+/// game's cards of the data set `set_id`, the list's game system. Nothing
+/// when there are none.
 pub fn list_section(
   state: State,
   set_id: String,
-  nodes: List(#(Place, String)),
+  nodes: List(#(String, String)),
 ) -> Element(msg) {
-  let in_scope = fn(id) { result.is_ok(node_name(nodes, id)) }
+  let in_scope = fn(id) { list.key_find(nodes, id) |> result.is_ok }
   grouped(
     "Cards",
     list.filter(saved_cards(state), counts(_, set_id, in_scope)),
-    fn(id) { node_name(nodes, id) |> result.unwrap("") },
+    fn(id) { list.key_find(nodes, id) |> result.unwrap("") },
     plain,
   )
 }
@@ -596,14 +585,14 @@ pub fn list_section(
 pub fn list_unit_section(
   state: State,
   set_id: String,
-  nodes: List(#(Place, String)),
+  nodes: List(#(String, String)),
   keywords: List(String),
 ) -> Element(msg) {
-  let in_scope = fn(id) { result.is_ok(node_name(nodes, id)) }
+  let in_scope = fn(id) { list.key_find(nodes, id) |> result.is_ok }
   grouped(
     "Cards for this unit",
     for_unit(saved_cards(state), set_id, in_scope, keywords),
-    fn(id) { node_name(nodes, id) |> result.unwrap("") },
+    fn(id) { list.key_find(nodes, id) |> result.unwrap("") },
     plain,
   )
 }

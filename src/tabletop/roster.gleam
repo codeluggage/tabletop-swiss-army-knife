@@ -16,7 +16,14 @@ import tabletop/sheet.{
 }
 
 pub type Roster {
-  Roster(name: String, costs: List(Cost), forces: List(Force))
+  Roster(
+    name: String,
+    /// The id of the game system the list was built for, which is the id of
+    /// its data set. Empty when the file has none.
+    game_system_id: String,
+    costs: List(Cost),
+    forces: List(Force),
+  )
 }
 
 pub type Force {
@@ -77,6 +84,7 @@ pub fn decode(text: String) -> Result(Roster, FileError) {
 
 fn roster_decoder() -> decode.Decoder(Roster) {
   use name <- decode.optional_field("name", "", decode.string)
+  use game_system_id <- decode.optional_field("gameSystemId", "", decode.string)
   use costs <- decode.optional_field(
     "costs",
     [],
@@ -87,7 +95,7 @@ fn roster_decoder() -> decode.Decoder(Roster) {
     [],
     decode.list(force_decoder()),
   )
-  decode.success(Roster(name:, costs:, forces:))
+  decode.success(Roster(name:, game_system_id:, costs:, forces:))
 }
 
 fn force_decoder() -> decode.Decoder(Force) {

@@ -28,7 +28,7 @@ import tabletop/bytes.{type UnpackError}
 import tabletop/catalogue.{type Catalogue, type Summary}
 import tabletop/data_index.{type Index}
 import tabletop/effects
-import tabletop/route.{type Place, type Route}
+import tabletop/route.{type Route}
 import tabletop/scope.{type CostLine, type Item, type Page, type Scope}
 import tabletop/sheet
 import tabletop/sheet_view
@@ -644,28 +644,11 @@ pub fn value_href(
   catalogue_id: String,
   entry_ids: List(String),
 ) -> Option(String) {
-  value_place(state, catalogue_id, entry_ids)
-  |> option.map(fn(place) { route.to_hash(route.place_page(place)) })
-}
-
-/// The node a setting's chosen value links to, as in `value_href`.
-pub fn value_place(
-  state: State,
-  catalogue_id: String,
-  entry_ids: List(String),
-) -> Option(Place) {
   {
     use set <- result.try(set_with(state, catalogue_id))
     use last <- result.map(list.last(entry_ids))
-    route.Node(set.id, catalogue_id, last)
+    route.to_hash(route.NodePage(set.id, catalogue_id, last))
   }
-  |> option.from_result
-}
-
-/// The id of the loaded data set that has the catalogue.
-pub fn set_of(state: State, catalogue_id: String) -> Option(String) {
-  set_with(state, catalogue_id)
-  |> result.map(fn(set) { set.id })
   |> option.from_result
 }
 

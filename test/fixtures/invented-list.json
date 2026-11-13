@@ -1,6 +1,7 @@
 {
   "roster": {
     "name": "Sunday Picnic",
+    "gameSystemId": "sys-picnic",
     "costs": [{ "name": "acorns", "value": 120 }],
     "forces": [
       {
@@ -24,6 +25,7 @@
             "selections": [
               {
                 "id": "s-drizzle",
+                "entryId": "e-weather::e-drizzle",
                 "name": "Drizzle",
                 "type": "upgrade",
                 "number": 1,

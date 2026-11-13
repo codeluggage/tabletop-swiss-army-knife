@@ -1,11 +1,15 @@
 import gleam/dict
 import gleam/option.{None, Some}
+import gleam/string
 import gleeunit
+import lustre/element
+import simplifile
 import tabletop.{
-  type Model, Applying, Available, FileNotRead, FileRead, Flags, HashChanged,
-  ListsMsg, Model, NeitherKind, NotAKnownKind, TextKind, UpToDate,
+  type Model, Applying, Available, CardsMsg, FileNotRead, FileRead, Flags,
+  HashChanged, ListsMsg, Model, NeitherKind, NotAKnownKind, TextKind, UpToDate,
   VersionFetched, ZipKind,
 }
+import tabletop/cards
 import tabletop/lists
 import tabletop/roster
 import tabletop/route
@@ -113,4 +117,49 @@ pub fn the_shell_owns_the_problems_of_the_file_itself_test() {
   assert model.file_problem == Some(NotAKnownKind)
   assert model.lists.problem == None
   assert model.data.problem == None
+}
+
+pub fn a_list_shows_its_cards_without_the_game_data_test() {
+  let assert Ok(text) = simplifile.read("test/fixtures/invented-list.json")
+  let assert Ok(decoded) = roster.decode(text)
+  let saved = lists.Saved(id: "l1", name: "", imported: 0, roster: Ok(decoded))
+  let card = fn(id, name, place) {
+    cards.Card(
+      id:,
+      name:,
+      cost: "",
+      when: "",
+      target: "",
+      effect: "",
+      place:,
+      edited: 0,
+    )
+  }
+  let saved_cards = [
+    card(
+      "c1",
+      "Second Pour",
+      route.Node("sys-picnic", "cat-teapot", "e-drizzle"),
+    ),
+    card("c2", "Crumb Trail", route.Game("sys-picnic")),
+    card("c3", "Lid Down", route.Node("sys-picnic", "cat-teapot", "e-sunshine")),
+    card("c4", "Spilt Milk", route.Game("sys-other")),
+  ]
+  let #(model, _) =
+    tabletop.update(model(UpToDate), ListsMsg(lists.ListsLoaded(Ok([saved]))))
+  let #(model, _) =
+    tabletop.update(model, CardsMsg(cards.CardsLoaded(Ok(saved_cards))))
+  // No data set is loaded.
+  assert model.data.sets == None
+  let page =
+    tabletop.view(Model(..model, route: route.ListPage("l1")))
+    |> element.to_string
+  // The chosen value's node first, under the value's name, then the game.
+  let assert [_, after_value] = string.split(page, "<h3>Drizzle</h3>")
+  let assert [value_cards, game_cards] =
+    string.split(after_value, "<h3>Whole game</h3>")
+  assert string.contains(value_cards, "Second Pour")
+  assert string.contains(game_cards, "Crumb Trail")
+  assert !string.contains(page, "Lid Down")
+  assert !string.contains(page, "Spilt Milk")
 }

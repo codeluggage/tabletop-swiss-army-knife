@@ -414,22 +414,11 @@ fn cards_view(elements: List(Element(cards.Msg))) -> List(Element(Msg)) {
 /// The list screens' links into game data and their cards. The list feature
 /// never sees the data or cards features.
 fn data_links(model: Model) -> lists.DataLinks {
-  // The cards of a force come from the data set with its catalogue and the
-  // nodes its settings' chosen values link to, each with the value's name.
-  let force_cards = fn(catalogue_id, values, show) {
-    case data.set_of(model.data, catalogue_id) {
-      None -> element.none()
-      Some(set_id) ->
-        show(
-          set_id,
-          list.filter_map(values, fn(value: #(String, List(String))) {
-            case data.value_place(model.data, catalogue_id, value.1) {
-              Some(place) -> Ok(#(place, value.0))
-              None -> Error(Nil)
-            }
-          }),
-        )
-    }
+  // The node of a chosen setting value is its last entry id, with the
+  // value's name.
+  let nodes = fn(values) {
+    use value: #(String, List(String)) <- list.filter_map(values)
+    list.last(value.1) |> result.map(fn(node_id) { #(node_id, value.0) })
   }
   lists.DataLinks(
     entry: fn(catalogue_id, entry_ids) {
@@ -438,13 +427,11 @@ fn data_links(model: Model) -> lists.DataLinks {
     value: fn(catalogue_id, entry_ids) {
       data.value_href(model.data, catalogue_id, entry_ids)
     },
-    cards: fn(catalogue_id, values) {
-      use set_id, nodes <- force_cards(catalogue_id, values)
-      cards.list_section(model.cards, set_id, nodes)
+    cards: fn(set_id, values) {
+      cards.list_section(model.cards, set_id, nodes(values))
     },
-    unit_cards: fn(catalogue_id, values, keywords) {
-      use set_id, nodes <- force_cards(catalogue_id, values)
-      cards.list_unit_section(model.cards, set_id, nodes, keywords)
+    unit_cards: fn(set_id, values, keywords) {
+      cards.list_unit_section(model.cards, set_id, nodes(values), keywords)
     },
   )
 }
