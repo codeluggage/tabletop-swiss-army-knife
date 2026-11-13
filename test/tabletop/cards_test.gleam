@@ -9,8 +9,11 @@ import tabletop/cards.{
   type Card, Card, CardsLoaded, Cost, DeleteCancelled, DeleteClicked, Effect,
   FormSubmitted, Name, NoName, NoStorage, TableRead, When,
 }
+import tabletop/catalogue
 import tabletop/route.{Game, Node}
+import tabletop/scope
 import tabletop/storage
+import tabletop/text
 
 fn card(id: String, name: String, target: String, place: route.Place) -> Card {
   Card(id:, name:, cost: "", when: "", target:, effect: "", place:)
@@ -87,6 +90,48 @@ pub fn delete_asks_first_test() {
   let #(answered, _) = cards.update(asking, DeleteCancelled, None)
   assert answered.confirming == None
   assert answered.cards == state.cards
+}
+
+// --- Where a card shows ----------------------------------------------------
+
+/// The scope of a catalogue, built from the invented data files `names`.
+fn scope_of(names: List(String)) -> scope.Scope {
+  list.map(names, fn(name) {
+    let assert Ok(text) =
+      simplifile.read("test/fixtures/data/" <> name <> ".json")
+    let assert Ok(decoded) = catalogue.decode(text)
+    decoded
+  })
+  |> scope.build
+}
+
+pub fn a_card_shows_on_its_node_from_any_catalogue_test() {
+  // Placed while browsing one catalogue, opened from another that reaches
+  // the same node.
+  let state =
+    loaded([
+      card(
+        "c1",
+        "Second Pour",
+        "",
+        Node("sys-picnic", "cat-teapot", "e-captain"),
+      ),
+    ])
+  let built = scope_of(["pantry", "picnic-system"])
+  let assert Ok(page) = scope.page(built, "e-captain")
+  let node =
+    render(cards.node_sections(
+      state,
+      "sys-picnic",
+      "cat-pantry",
+      "e-captain",
+      built,
+      page,
+      text.links([]),
+    ))
+  assert string.contains(node, "Second Pour")
+  let place = Node("sys-picnic", "cat-pantry", "e-captain")
+  assert string.contains(render(cards.place_page(state, place)), "Second Pour")
 }
 
 // --- The import -------------------------------------------------------------

@@ -911,8 +911,16 @@ fn delete_view(id: String, confirming: Bool) -> Element(Msg) {
 /// cards, and the import.
 pub fn import_page(state: State, place: Place) -> List(Element(Msg)) {
   let back = back_button()
-  case state.pending {
-    Some(pending) if pending.place == place -> {
+  // A file opened for the same node from another catalogue is still its file.
+  let pending =
+    option.then(state.pending, fn(pending) {
+      case belongs(pending.place, place) {
+        True -> Some(pending)
+        False -> None
+      }
+    })
+  case pending {
+    Some(pending) -> {
       let #(cards, skipped) = import_cards(pending, fn() { "" })
       let rows = list.length(pending.table.rows)
       [
@@ -970,7 +978,7 @@ pub fn import_page(state: State, place: Place) -> List(Element(Msg)) {
         ])
       ]
     }
-    _ -> [
+    None -> [
       back,
       html.h1([], [html.text("Import cards")]),
       note("No table file is open. Choose one with Import cards from a table."),
