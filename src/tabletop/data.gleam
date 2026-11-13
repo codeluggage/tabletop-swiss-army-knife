@@ -1099,7 +1099,8 @@ pub fn catalogue_page(
 
 /// The node screen: the page of the node in its catalogue's scope, once the
 /// scope is built. What `cards` gives for the scope, the page and the rule
-/// links goes after the rules.
+/// links goes right after the title and costs for a node with keywords, so
+/// it is near the top of a unit, and after the rules for any other node.
 pub fn node_page(
   state: State,
   set_id: String,
@@ -1199,6 +1200,10 @@ fn node_view(
       False -> []
     },
     [sheet_view.costs(page.costs), cost_lines(page.cost_lines)],
+    case page.keywords {
+      [] -> []
+      _ -> cards
+    },
     list.map(sheet.profile_groups(page.profiles), sheet_view.profile_group(
       _,
       show_text,
@@ -1225,7 +1230,10 @@ fn node_view(
         list.map(page.linked_rules, fn(rule) { #(rule.name, href(rule.id)) }),
       ),
     ],
-    cards,
+    case page.keywords {
+      [] -> cards
+      _ -> []
+    },
     [
       chips(
         "Keywords",

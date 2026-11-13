@@ -244,20 +244,24 @@ pub fn a_node_screen_builds_its_scope_one_file_at_a_time_test() {
     )),
     "Only with Teacup Sergeant",
   )
-  // The cards go after the rules, before the keywords.
-  let page =
+  // For a node with keywords the cards go right after the title and costs.
+  let cards_on = fn(node_id) {
     render(
-      data.node_page(
-        state,
-        "sys-picnic",
-        "cat-teapot",
-        "l-captain",
-        fn(_, _, _) { [html.p([], [html.text("The cards")])] },
-      ),
+      data.node_page(state, "sys-picnic", "cat-teapot", node_id, fn(_, _, _) {
+        [html.p([], [html.text("The cards")])]
+      }),
     )
-  let assert [before, after] = string.split(page, "<p>The cards</p>")
-  assert string.contains(before, "<h2>Rules</h2>")
+    |> string.split("<p>The cards</p>")
+  }
+  let assert [before, after] = cards_on("l-captain")
+  assert string.contains(before, "Kettle Captain</h1>")
+  assert string.contains(before, "class=\"costs\"")
+  assert !string.contains(before, "<table")
+  assert string.contains(after, "<h2>Rules</h2>")
   assert string.contains(after, "<h2>Keywords</h2>")
+  // For any other node they go after the rules.
+  let assert [before, _] = cards_on("r-teatime")
+  assert string.contains(before, "<h2>Rules</h2>")
   // A second node in the same catalogue starts nothing.
   let other = route.NodePage("sys-picnic", "cat-teapot", "l-squad")
   let #(again, _) = data.enter(state, other, None)

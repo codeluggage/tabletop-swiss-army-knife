@@ -33,7 +33,8 @@ pub type Route {
 
 /// Where a card belongs: the whole game of a data set, or one node in it. In
 /// a hash it is the set id alone, or the set, catalogue and node ids, so the
-/// number of parts says which.
+/// number of parts says which. The catalogue id is only for links and for
+/// which scope to open: a node is the same place from any catalogue.
 pub type Place {
   Game(set_id: String)
   Node(set_id: String, catalogue_id: String, node_id: String)

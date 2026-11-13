@@ -1,7 +1,9 @@
 //// The cards feature: short pieces of game text that the user types in or
 //// imports from a table file. A card belongs to the whole game of a data set
-//// or to one node in it. It shows on its place's screen, on a list whose
-//// settings link to its node, and on a unit whose keywords its target names.
+//// or to one node in it, by the set and node ids, whichever catalogue it was
+//// placed from. It shows on its place's screen, on a list whose settings
+//// link to its node, and for a unit, first when its target names one of the
+//// unit's keywords.
 //// The shell in `tabletop.gleam` holds its `State`, wraps its `Msg`, sends it
 //// the card routes, and puts its sections on the data and list screens.
 
@@ -17,7 +19,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import lustre/attribute
+import lustre/attribute.{type Attribute}
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
@@ -539,28 +541,39 @@ fn counts(card: Card, set_id: String, in_scope: fn(String) -> Bool) -> Bool {
   }
 }
 
-/// The cards for a unit: those that count, as in `counts`, whose target names
-/// one of the unit's keywords as a word of its own, ignoring case. A keyword
-/// shorter than three characters is too common a word to look for.
+/// The cards for a unit: of those that count, as in `counts`, the ones whose
+/// target names one of the unit's keywords as a word of its own, ignoring
+/// case, then the others. A keyword `Abc: Def` is looked for as `Def` too,
+/// since card text leaves the prefix out. A name shorter than three
+/// characters is too common a word to look for. Since a target can also
+/// name a keyword to leave it out, a match is only likely.
 pub fn for_unit(
   cards: List(Card),
   set_id: String,
   in_scope: fn(String) -> Bool,
   keywords: List(String),
-) -> List(Card) {
+) -> #(List(Card), List(Card)) {
   let names =
     keywords
-    |> list.map(fn(keyword) { string.lowercase(string.trim(keyword)) })
+    |> list.flat_map(fn(keyword) {
+      case string.split_once(keyword, ":") {
+        Ok(#(_, plain)) -> [keyword, plain]
+        Error(Nil) -> [keyword]
+      }
+    })
+    |> list.map(fn(name) { string.lowercase(string.trim(name)) })
     |> list.filter(fn(name) { string.length(name) >= 3 })
   let links = text.links(list.map(names, fn(name) { #(name, Nil) }))
-  use card <- list.filter(cards)
-  counts(card, set_id, in_scope)
-  && list.any(names, string.contains(string.lowercase(card.target), _))
-  && list.any(text.segments(string.lowercase(card.target), links), fn(segment) {
-    case segment {
-      text.Link(..) -> True
-      text.Text(..) -> False
-    }
+  list.filter(cards, counts(_, set_id, in_scope))
+  |> list.partition(fn(card) {
+    let target = string.lowercase(card.target)
+    list.any(names, string.contains(target, _))
+    && list.any(text.segments(target, links), fn(segment) {
+      case segment {
+        text.Link(..) -> True
+        text.Text(..) -> False
+      }
+    })
   })
 }
 
@@ -599,10 +612,11 @@ fn by_name(cards: List(Card)) -> List(Card) {
 
 // --- Views ------------------------------------------------------------------
 
-/// The card sections of a node screen: the node's own cards, then, when the
-/// node has keywords, the cards for it as a unit. Rule names in the text link
-/// to the rule nodes.
-pub fn node_sections(
+/// The one card section of a node screen: the node's own cards, then, when
+/// the node has keywords, the other cards of the scope for it as a unit, then
+/// "Add a card" and the import. Rule names in the text link to the rule
+/// nodes.
+pub fn node_section(
   state: State,
   set_id: String,
   catalogue_id: String,
@@ -610,7 +624,8 @@ pub fn node_sections(
   built: Scope,
   page: Page,
   links: text.Links(String),
-) -> List(Element(Msg)) {
+) -> Element(Msg) {
+  let place = Node(set_id:, catalogue_id:, node_id:)
   let show_text = sheet_view.rich_text(_, links, fn(id) {
     route.to_hash(route.NodePage(set_id, catalogue_id, id))
   })
@@ -618,30 +633,36 @@ pub fn node_sections(
     scope.find(built, id)
     |> result.map(fn(placed) { catalogue.name(placed.node) })
   }
-  let keywords = list.map(page.keywords, fn(keyword) { keyword.1 })
-  [
-    place_section(
-      state,
-      Node(set_id:, catalogue_id:, node_id:),
-      "Cards",
-      show_text,
-    ),
-    case keywords {
+  let #(own, others) =
+    list.partition(saved_cards(state), fn(card) { belongs(card.place, place) })
+  html.section([], [
+    html.h2([], [html.text("Cards")]),
+    cards_status(state),
+    case own {
       [] -> element.none()
-      _ ->
-        grouped(
-          "Cards for this unit",
+      _ -> card_list(by_name(own), True, show_text)
+    },
+    case page.keywords {
+      [] -> element.none()
+      keywords -> {
+        let #(likely, other) =
           for_unit(
-            saved_cards(state),
+            others,
             set_id,
             fn(id) { result.is_ok(name_of(id)) },
-            keywords,
-          ),
+            list.map(keywords, fn(keyword) { keyword.1 }),
+          )
+        unit_cards(
+          likely,
+          other,
           fn(id) { name_of(id) |> result.unwrap("") },
           show_text,
         )
+      }
     },
-  ]
+    problem_view(state),
+    add_and_import(place, "actions small"),
+  ])
 }
 
 /// The card section of a data set screen: the cards for the whole game.
@@ -659,17 +680,23 @@ pub fn list_section(
   nodes: List(#(String, String)),
 ) -> Element(msg) {
   let in_scope = fn(id) { list.key_find(nodes, id) |> result.is_ok }
-  grouped(
-    "Cards",
-    list.filter(saved_cards(state), counts(_, set_id, in_scope)),
-    fn(id) { list.key_find(nodes, id) |> result.unwrap("") },
-    plain,
-  )
+  case list.filter(saved_cards(state), counts(_, set_id, in_scope)) {
+    [] -> element.none()
+    cards ->
+      html.section([], [
+        html.h2([], [html.text("Cards")]),
+        ..group_views(
+          cards,
+          fn(id) { list.key_find(nodes, id) |> result.unwrap("") },
+          plain,
+          html.h3,
+        )
+      ])
+  }
 }
 
-/// The cards for a unit of a list: of the cards in `list_section`, those
-/// whose target names one of the unit's keywords. Nothing when there are
-/// none.
+/// The cards for a unit of a list, as in `unit_cards`, from the cards in
+/// `list_section`. Nothing when there are none.
 pub fn list_unit_section(
   state: State,
   set_id: String,
@@ -677,9 +704,11 @@ pub fn list_unit_section(
   keywords: List(String),
 ) -> Element(msg) {
   let in_scope = fn(id) { list.key_find(nodes, id) |> result.is_ok }
-  grouped(
-    "Cards for this unit",
-    for_unit(saved_cards(state), set_id, in_scope, keywords),
+  let #(likely, other) =
+    for_unit(saved_cards(state), set_id, in_scope, keywords)
+  unit_cards(
+    likely,
+    other,
     fn(id) { list.key_find(nodes, id) |> result.unwrap("") },
     plain,
   )
@@ -715,70 +744,114 @@ fn place_section(
       "" -> element.none()
       _ -> html.h2([], [html.text(title)])
     },
+    cards_status(state),
     case state.cards {
-      None -> note("Opening the cards…")
-      Some(Error(error)) ->
-        note(
-          "The saved cards could not be read. "
-          <> sheet_view.describe_storage_error(error),
-        )
       Some(Ok(cards)) ->
         case list.filter(cards, fn(card) { belongs(card.place, place) }) {
           [] -> note("No cards yet.")
           cards -> card_list(by_name(cards), True, show_text)
         }
+      Some(Error(_)) | None -> element.none()
     },
     problem_view(state),
-    html.div([attribute.class("actions")], [
-      html.a(
-        [
-          attribute.class("button"),
-          attribute.href(route.to_hash(route.NewCardPage(place))),
-        ],
-        [html.text("Add a card")],
+    add_and_import(place, "actions"),
+  ])
+}
+
+/// Why there are no cards to show yet: they are being read, or could not be.
+fn cards_status(state: State) -> Element(msg) {
+  case state.cards {
+    None -> note("Opening the cards…")
+    Some(Error(error)) ->
+      note(
+        "The saved cards could not be read. "
+        <> sheet_view.describe_storage_error(error),
+      )
+    Some(Ok(_)) -> element.none()
+  }
+}
+
+/// "Add a card" and "Import cards from a table" for `place`, in a row of
+/// the class `class`.
+fn add_and_import(place: Place, class: String) -> Element(Msg) {
+  html.div([attribute.class(class)], [
+    html.a(
+      [
+        attribute.class("button"),
+        attribute.href(route.to_hash(route.NewCardPage(place))),
+      ],
+      [html.text("Add a card")],
+    ),
+    html.input([
+      attribute.type_("file"),
+      attribute.id("import-cards"),
+      attribute.class("visually-hidden"),
+      attribute.accept([
+        ".csv", ".tsv", ".txt", "text/csv", "text/tab-separated-values",
+        "text/plain",
+      ]),
+      event.on(
+        "change",
+        decode.at(["target"], decode.dynamic)
+          |> decode.map(TableChosen(place, _)),
       ),
-      html.input([
-        attribute.type_("file"),
-        attribute.id("import-cards"),
-        attribute.class("visually-hidden"),
-        attribute.accept([
-          ".csv", ".tsv", ".txt", "text/csv", "text/tab-separated-values",
-          "text/plain",
-        ]),
-        event.on(
-          "change",
-          decode.at(["target"], decode.dynamic)
-            |> decode.map(TableChosen(place, _)),
-        ),
-      ]),
-      html.label([attribute.for("import-cards"), attribute.class("button")], [
-        html.text("Import cards from a table"),
-      ]),
+    ]),
+    html.label([attribute.for("import-cards"), attribute.class("button")], [
+      html.text("Import cards from a table"),
     ]),
   ])
 }
 
-/// Cards under headings, as in `groups`, in a section under `title`. Nothing
-/// when there are no cards.
-fn grouped(
-  title: String,
-  cards: List(Card),
+/// The cards for a unit, collapsed under "Cards (N)": the likely ones under
+/// "Likely for this unit", then the others collapsed under "Other cards
+/// (N)", so a card the unit might use is never left out. Each part groups
+/// its cards as `groups` does. Nothing when there are none.
+fn unit_cards(
+  likely: List(Card),
+  other: List(Card),
   name_of: fn(String) -> String,
   show_text: fn(String) -> List(Element(msg)),
 ) -> Element(msg) {
-  case cards {
+  let titled = fn(title, cards) {
+    title <> " (" <> int.to_string(list.length(cards)) <> ")"
+  }
+  case list.append(likely, other) {
     [] -> element.none()
-    _ ->
-      html.section([], [
-        html.h2([], [html.text(title)]),
-        ..list.map(groups(cards, name_of), fn(group) {
-          element.fragment([
-            html.h3([], [html.text(group.0)]),
-            card_list(group.1, True, show_text),
-          ])
-        })
+    all ->
+      html.details([attribute.class("unit-cards")], [
+        html.summary([], [html.text(titled("Cards", all))]),
+        case likely {
+          [] -> element.none()
+          _ ->
+            element.fragment([
+              html.h3([], [html.text("Likely for this unit")]),
+              ..group_views(likely, name_of, show_text, html.h4)
+            ])
+        },
+        case other {
+          [] -> element.none()
+          _ ->
+            html.details([], [
+              html.summary([], [html.text(titled("Other cards", other))]),
+              ..group_views(other, name_of, show_text, html.h4)
+            ])
+        },
       ])
   }
+}
+
+/// Cards under a `heading` per group, as in `groups`.
+fn group_views(
+  cards: List(Card),
+  name_of: fn(String) -> String,
+  show_text: fn(String) -> List(Element(msg)),
+  heading: fn(List(Attribute(msg)), List(Element(msg))) -> Element(msg),
+) -> List(Element(msg)) {
+  use group <- list.map(groups(cards, name_of))
+  element.fragment([
+    heading([], [html.text(group.0)]),
+    card_list(group.1, True, show_text),
+  ])
 }
 
 fn card_list(

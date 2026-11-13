@@ -372,15 +372,17 @@ pub fn view(model: Model) -> Element(Msg) {
         catalogue_id,
         node_id,
         fn(built, page, links) {
-          cards.node_sections(
-            model.cards,
-            set_id,
-            catalogue_id,
-            node_id,
-            built,
-            page,
-            links,
-          )
+          [
+            cards.node_section(
+              model.cards,
+              set_id,
+              catalogue_id,
+              node_id,
+              built,
+              page,
+              links,
+            ),
+          ]
           |> cards_view
         },
       )

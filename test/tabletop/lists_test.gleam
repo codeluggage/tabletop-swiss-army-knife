@@ -63,3 +63,17 @@ pub fn a_chosen_value_is_a_link_when_there_is_one_test() {
   )
   assert !string.contains(render(page(links(None))), "href=\"#/data/x\"")
 }
+
+pub fn a_unit_shows_its_cards_right_after_its_costs_test() {
+  let links =
+    lists.DataLinks(..links(None), unit_cards: fn(set_id, _, _) {
+      html.p([], [html.text("The cards of " <> set_id)])
+    })
+  let page = render(lists.unit_page(saved_list(), "l1", "u-squad", links))
+  let assert [before, after] =
+    string.split(page, "<p>The cards of sys-picnic</p>")
+  assert string.contains(before, "class=\"costs\"")
+  assert !string.contains(before, "<table")
+  assert string.contains(after, "<table")
+  assert string.contains(after, "<h2>Keywords</h2>")
+}

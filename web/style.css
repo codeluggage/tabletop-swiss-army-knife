@@ -223,6 +223,25 @@ a.button {
   margin: 1rem 0;
 }
 
+/* The card buttons of a node: one row of two small buttons. */
+.actions.small {
+  margin: 0.5rem 0;
+}
+
+.actions.small .button {
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+/* Collapsed cards: the summary is a full-size tap target. */
+summary {
+  min-height: 2.75rem;
+  padding: 0.6rem 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .delete {
   margin-top: 1.5rem;
 }

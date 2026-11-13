@@ -121,15 +121,17 @@ pub fn a_card_shows_on_its_node_from_any_catalogue_test() {
   let built = scope_of(["pantry", "picnic-system"])
   let assert Ok(page) = scope.page(built, "e-captain")
   let node =
-    render(cards.node_sections(
-      state,
-      "sys-picnic",
-      "cat-pantry",
-      "e-captain",
-      built,
-      page,
-      text.links([]),
-    ))
+    render([
+      cards.node_section(
+        state,
+        "sys-picnic",
+        "cat-pantry",
+        "e-captain",
+        built,
+        page,
+        text.links([]),
+      ),
+    ])
   assert string.contains(node, "Second Pour")
   let place = Node("sys-picnic", "cat-pantry", "e-captain")
   assert string.contains(render(cards.place_page(state, place)), "Second Pour")
@@ -277,31 +279,143 @@ pub fn a_file_that_is_not_utf8_is_read_as_windows_1252_test() {
 
 // --- Cards for a unit -------------------------------------------------------
 
-pub fn the_cards_for_a_unit_test() {
+/// Where a card with `target` at `place` goes for a unit with `keywords`:
+/// `Likely`, `Other`, or `Left` out of both for not counting.
+type Pick {
+  Likely
+  Other
+  Left
+}
+
+fn pick(target: String, place: route.Place, keywords: List(String)) -> Pick {
+  let found = card("c", "A card", target, place)
   let in_scope = fn(node_id) { node_id == "e-squad" }
-  let keywords = ["Teacup", "Up"]
-  let pick = fn(target, place) {
-    cards.for_unit(
-      [card("c", "A card", target, place)],
-      "sys-picnic",
-      in_scope,
-      keywords,
-    )
-    != []
+  case cards.for_unit([found], "sys-picnic", in_scope, keywords) {
+    #([_], []) -> Likely
+    #([], [_]) -> Other
+    _ -> Left
   }
+}
+
+pub fn the_cards_for_a_unit_test() {
+  let keywords = ["Teacup", "Up"]
   let game = Game("sys-picnic")
   // A match, and a match in another case.
-  assert pick("One Teacup unit", game)
-  assert pick("one TEACUP unit", game)
+  assert pick("One Teacup unit", game, keywords) == Likely
+  assert pick("one TEACUP unit", game, keywords) == Likely
   // A keyword inside a longer word.
-  assert !pick("All Teacups", game)
+  assert pick("All Teacups", game, keywords) == Other
   // A keyword under three characters is not looked for.
-  assert !pick("Up to two units", game)
+  assert pick("Up to two units", game, keywords) == Other
   // A node in the scope counts, a node in another catalogue's scope does not,
   // and neither does another data set.
-  assert pick("One Teacup unit", Node("sys-picnic", "cat-teapot", "e-squad"))
-  assert !pick("One Teacup unit", Node("sys-picnic", "cat-pantry", "e-other"))
-  assert !pick("One Teacup unit", Game("sys-other"))
+  let squad = Node("sys-picnic", "cat-teapot", "e-squad")
+  assert pick("One Teacup unit", squad, keywords) == Likely
+  let other = Node("sys-picnic", "cat-pantry", "e-other")
+  assert pick("One Teacup unit", other, keywords) == Left
+  assert pick("One Teacup unit", Game("sys-other"), keywords) == Left
+}
+
+pub fn a_prefixed_keyword_matches_by_its_plain_name_too_test() {
+  let keywords = ["Golem: Teacup"]
+  let game = Game("sys-picnic")
+  assert pick("One Teacup unit", game, keywords) == Likely
+  assert pick("One Golem: Teacup unit", game, keywords) == Likely
+  // The prefix alone is not a keyword of the unit.
+  assert pick("One Golem unit", game, keywords) == Other
+}
+
+pub fn a_card_that_does_not_match_is_never_left_out_test() {
+  let squad = Node("sys-picnic", "cat-teapot", "e-squad")
+  let state =
+    loaded([
+      card("c1", "Second Pour", "One Teacup unit", squad),
+      card("c2", "Lid Down", "Every unit but a Teacup", Game("sys-picnic")),
+      card("c3", "Crumb Trail", "One Kettle unit", Game("sys-picnic")),
+    ])
+  let page =
+    render([
+      cards.list_unit_section(
+        state,
+        "sys-picnic",
+        [#("e-squad", "Teacup Squad")],
+        ["Teacup"],
+      ),
+    ])
+  // Collapsed, with every card in the count.
+  assert string.contains(
+    page,
+    "<details class=\"unit-cards\"><summary>Cards (3)</summary>",
+  )
+  let assert [likely, other] =
+    string.split(page, "<summary>Other cards (1)</summary>")
+  assert string.contains(likely, "Likely for this unit")
+  assert string.contains(likely, "Second Pour")
+  assert string.contains(likely, "Lid Down")
+  assert string.contains(other, "Crumb Trail")
+  assert !string.contains(likely, "Crumb Trail")
+}
+
+pub fn a_node_with_no_cards_and_no_keywords_shows_only_the_buttons_test() {
+  let built = scope_of(["pantry", "picnic-system"])
+  let assert Ok(page) = scope.page(built, "r-teatime")
+  assert page.keywords == []
+  let section =
+    render([
+      cards.node_section(
+        loaded([]),
+        "sys-picnic",
+        "cat-pantry",
+        "r-teatime",
+        built,
+        page,
+        text.links([]),
+      ),
+    ])
+  // Nothing between the heading and the buttons, and nothing after them.
+  assert string.starts_with(
+    section,
+    "<div><section><h2>Cards</h2><div class=\"actions small\">",
+  )
+  assert string.ends_with(section, "</label></div></section></div>")
+  assert string.contains(section, "Add a card")
+  assert string.contains(section, "Import cards from a table")
+  assert !string.contains(section, "No cards yet")
+}
+
+pub fn a_unit_node_shows_its_own_cards_then_the_others_collapsed_test() {
+  let built = scope_of(["pantry", "picnic-system"])
+  let assert Ok(page) = scope.page(built, "e-captain")
+  let captain = Node("sys-picnic", "cat-pantry", "e-captain")
+  let state =
+    loaded([
+      card("c1", "Second Pour", "", captain),
+      card("c2", "Lid Down", "One Kettle unit", Game("sys-picnic")),
+      card("c3", "Crumb Trail", "", Game("sys-picnic")),
+    ])
+  let section =
+    render([
+      cards.node_section(
+        state,
+        "sys-picnic",
+        "cat-pantry",
+        "e-captain",
+        built,
+        page,
+        text.links([]),
+      ),
+    ])
+  // The node's own card first and once, then the other two collapsed, then
+  // the buttons.
+  let assert [own, collapsed] =
+    string.split(section, "<summary>Cards (2)</summary>")
+  assert string.contains(own, "Second Pour")
+  assert !string.contains(collapsed, "Second Pour")
+  let assert [likely, rest] =
+    string.split(collapsed, "<summary>Other cards (1)</summary>")
+  assert string.contains(likely, "Lid Down")
+  assert string.contains(rest, "Crumb Trail")
+  assert string.contains(rest, "class=\"actions small\"")
 }
 
 pub fn a_list_groups_its_cards_by_node_then_the_whole_game_test() {

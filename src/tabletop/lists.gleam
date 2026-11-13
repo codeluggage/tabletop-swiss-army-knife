@@ -517,6 +517,8 @@ pub fn unit_page(
             None -> element.none()
           },
           sheet_view.costs(roster.unit_costs(unit)),
+          // The cards, one tap away and never several screens down.
+          links.unit_cards(decoded.game_system_id, values, keywords),
         ],
         list.map(
           sheet.profile_groups(roster.unit_profiles(unit)),
@@ -538,7 +540,6 @@ pub fn unit_page(
                 ]),
               ])
           },
-          links.unit_cards(decoded.game_system_id, values, keywords),
           case unit.selections {
             [] -> element.none()
             children ->
