@@ -531,3 +531,188 @@ dd {
   color: #f7f5f0;
   cursor: pointer;
 }
+
+/* The game tracker, played one-handed on a phone: every tap target is at
+   least 3rem, and one tap changes one number. */
+.score-head {
+  margin: 0.5rem 0 1rem;
+}
+
+.sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.side-name {
+  font-weight: 600;
+  text-align: center;
+}
+
+.side-total {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.result {
+  margin: 0.5rem 0;
+  font-weight: 600;
+  text-align: center;
+}
+
+.ended {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.player {
+  margin-top: 1.5rem;
+}
+
+.player h3 small {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.counter {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+}
+
+.counter-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0;
+}
+
+/* A label, then a minus, the number and a plus, or a typed number. */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  margin: 0.25rem 0;
+}
+
+.stepper > :first-child {
+  flex: 1;
+}
+
+.tap,
+.toggle {
+  font: inherit;
+  border: 1px solid color-mix(in srgb, var(--muted) 50%, transparent);
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tap {
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.stepper output {
+  min-width: 2.5rem;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.stepper .points {
+  font: inherit;
+  width: 6rem;
+  min-height: 3rem;
+  padding: 0 0.75rem;
+  text-align: right;
+  border: 1px solid color-mix(in srgb, var(--muted) 50%, transparent);
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+}
+
+/* Scored or not, and who went first: on when filled. */
+.toggle {
+  display: block;
+  width: 100%;
+  min-height: 3rem;
+  margin: 0.25rem 0;
+  padding: 0 1rem;
+  text-align: left;
+}
+
+.toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #1d2b36;
+  font-weight: 600;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.pair .toggle {
+  text-align: center;
+}
+
+/* The round bar: at the end of the screen, and in reach of a thumb while
+   the page scrolls. */
+.round-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding: 0.75rem 0;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  border-top: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+  background: var(--paper);
+}
+
+.round-bar .button {
+  min-height: 3rem;
+}
+
+.round-number {
+  font-weight: 600;
+}
+
+/* The update bar sits over the end of the screen while it shows. */
+.page:has(.update-bar) .round-bar {
+  bottom: 4.5rem;
+}
+
+/* A counter, scoring line or result on a score sheet's screen. */
+.part {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+}
+
+.part .actions {
+  margin: 0.5rem 0 0;
+}
