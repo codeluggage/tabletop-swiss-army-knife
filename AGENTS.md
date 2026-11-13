@@ -178,9 +178,11 @@ The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026
 
 ### Layout
 
-- `src/tabletop.gleam` - the shell: flags, the version and the update bar, the service worker, opening storage, the route and scroll, the chosen file and which feature gets it by its kind, the home screen's frame and "About this device", and the wiring of each feature, the list screens' links into game data included.
+- `src/tabletop.gleam` - the shell: flags, the version and the update bar, the service worker, opening storage, the route and scroll, the chosen file and which feature gets it by its kind, the home screen's frame and "About this device", and the wiring of each feature, the list screens' links into game data and their cards included, and the cards on the data set and node screens.
 - `src/tabletop/lists.gleam` - the list feature: its state, messages and effects, importing and deleting lists, and the saved lists, list, unit and rule screens.
-- `src/tabletop/data.gleam` - the game data feature: its state, messages and effects, importing a zip one file at a time, building an older index again, opening a catalogue's scope, deleting a data set, the data set, catalogue and node screens, and the links from a list into the data.
+- `src/tabletop/data.gleam` - the game data feature: its state, messages and effects, importing a zip one file at a time, building an older index again, opening a catalogue's scope, deleting a data set, the data set, catalogue and node screens with a place for the cards, and the links and places from a list into the data.
+- `src/tabletop/cards.gleam` - the cards feature: its state, messages and effects, the card form, importing cards from a table file, deleting a card, which cards show for a place, a list and a unit, and the card screens and sections.
+- `src/tabletop/table.gleam` - the text of a table file as rows of cells: commas or tabs, quoted cells as in RFC 4180.
 - `src/tabletop/effects.gleam` - effects the shell and the features share: a promise's value as a message.
 - `src/tabletop/storage.gleam` + `storage_ffi.mjs` - IndexedDB behind promises of `Result`: JSON and bytes, many writes in one transaction, and the persistent storage request.
 - `src/tabletop/browser.gleam` + `browser_ffi.mjs` - page-level browser calls: the stamped version, `version.json`, the service worker, tab visibility, the clock, history and scroll, random ids, the chosen file's name and bytes.
@@ -193,7 +195,7 @@ The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026
 - `src/tabletop/data_index.gleam` - what the app keeps about a data set: a summary per file and its JSON, and the roots, grouping, search and scope files of a catalogue.
 - `src/tabletop/scope.gleam` - the decoded files one catalogue reaches: every node by id, what is hidden when nothing is chosen, and the page of a node as data.
 - `src/tabletop/sheet_view.gleam` - the views every feature shares: profile tables, text with links, rule chips, costs, back links, the not found message and storage errors in words.
-- `src/tabletop/route.gleam` - the screen in the URL hash: parse, `to_hash`, and the `hashchange` listener.
+- `src/tabletop/route.gleam` - the screen in the URL hash: parse, `to_hash`, going to a screen, and the `hashchange` listener, and the place a card belongs to.
 - `src/tabletop/version.gleam` - the build version: parse, compare, `version.json`.
 - `web/` - the static shell: `index.html`, `manifest.webmanifest`, `sw.js`, `style.css`, `icons/`. `__VERSION__` and `__FILES__` are placeholders the build replaces.
 - `dev/tabletop/build.gleam`, `serve.gleam` + `node_ffi.mjs` - the build and serve commands, run on Node.
