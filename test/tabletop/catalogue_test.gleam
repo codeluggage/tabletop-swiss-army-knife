@@ -547,3 +547,224 @@ pub fn a_minimal_file_decodes_test() {
   assert catalogue.decode("{\"gameSystem\": {\"id\": \"s\"}}")
     == Ok(Catalogue(True, "s", "", False, [], [], []))
 }
+
+// --- Visibility when nothing is chosen --------------------------------------
+
+fn when(kind: catalogue.ConditionKind, value: Float) -> catalogue.Condition {
+  Condition(kind, "selections", "roster", value, "e-any")
+}
+
+fn shows(conditions: List(catalogue.Condition)) -> catalogue.Modifier {
+  Modifier(Set, "hidden", BoolValue(False), conditions, [])
+}
+
+/// Whether a condition holds for a count of zero: a visible node with one
+/// modifier that hides it on this condition.
+fn holds(kind: catalogue.ConditionKind, value: Float) -> Bool {
+  catalogue.hidden_by_default(False, [hides([when(kind, value)])])
+}
+
+pub fn hidden_starts_from_the_nodes_own_flag_test() {
+  assert !catalogue.hidden_by_default(False, [])
+  assert catalogue.hidden_by_default(True, [])
+}
+
+pub fn each_condition_kind_is_checked_against_a_count_of_zero_test() {
+  assert holds(LessThan, 1.0)
+  assert !holds(LessThan, 0.0)
+  assert holds(AtMost, 0.0)
+  assert !holds(AtMost, -1.0)
+  assert holds(AtLeast, 0.0)
+  assert !holds(AtLeast, 1.0)
+  assert holds(GreaterThan, -1.0)
+  assert !holds(GreaterThan, 0.0)
+  assert holds(EqualTo, 0.0)
+  assert !holds(EqualTo, 1.0)
+  assert holds(NotEqualTo, 1.0)
+  assert !holds(NotEqualTo, 0.0)
+  assert holds(NotInstanceOf, 1.0)
+  assert !holds(InstanceOf, 0.0)
+  assert !holds(OtherCondition("before"), 0.0)
+}
+
+pub fn a_modifier_holds_when_all_its_conditions_and_groups_hold_test() {
+  let yes = when(LessThan, 1.0)
+  let no = when(AtLeast, 1.0)
+  let grouped = fn(kind, conditions, groups) {
+    catalogue.hidden_by_default(False, [
+      Modifier(Set, "hidden", BoolValue(True), [], [
+        ConditionGroup(kind, conditions, groups),
+      ]),
+    ])
+  }
+  // A modifier with no condition holds.
+  assert catalogue.hidden_by_default(False, [hides([])])
+  assert catalogue.hidden_by_default(False, [hides([yes, yes])])
+  assert !catalogue.hidden_by_default(False, [hides([yes, no])])
+  // An and group needs every part, an or group any part.
+  assert grouped(And, [yes, yes], [])
+  assert !grouped(And, [yes, no], [])
+  assert grouped(And, [], [])
+  assert grouped(Or, [no, yes], [])
+  assert !grouped(Or, [no, no], [])
+  assert !grouped(Or, [], [])
+  // Groups inside groups.
+  assert grouped(And, [yes], [ConditionGroup(Or, [no, yes], [])])
+  assert !grouped(And, [yes], [ConditionGroup(Or, [no], [])])
+  assert grouped(Or, [no], [ConditionGroup(And, [yes], [])])
+  // Any other kind of group never holds.
+  assert !grouped(OtherGroup("count"), [yes], [])
+  // Conditions and groups together: both must hold.
+  let both = fn(condition, group_condition) {
+    catalogue.hidden_by_default(False, [
+      Modifier(Set, "hidden", BoolValue(True), [condition], [
+        ConditionGroup(And, [group_condition], []),
+      ]),
+    ])
+  }
+  assert both(yes, yes)
+  assert !both(yes, no)
+  assert !both(no, yes)
+}
+
+pub fn modifiers_apply_in_order_and_only_those_that_set_hidden_test() {
+  assert !catalogue.hidden_by_default(False, [hides([]), shows([])])
+  assert catalogue.hidden_by_default(False, [shows([]), hides([])])
+  assert !catalogue.hidden_by_default(True, [shows([when(AtLeast, 0.0)])])
+  assert catalogue.hidden_by_default(True, [shows([when(AtLeast, 1.0)])])
+  // Another kind, another field, or a value that is not a bool: ignored.
+  assert !catalogue.hidden_by_default(False, [
+    Modifier(Increment, "hidden", BoolValue(True), [], []),
+    Modifier(Set, "name", BoolValue(True), [], []),
+    Modifier(Set, "hidden", TextValue("true"), [], []),
+    Modifier(Set, "hidden", NumberValue(1.0), [], []),
+  ])
+}
+
+// --- Needs ------------------------------------------------------------------
+
+fn at(
+  kind: catalogue.ConditionKind,
+  value: Float,
+  child_id: String,
+) -> catalogue.Condition {
+  Condition(kind, "selections", "roster", value, child_id)
+}
+
+fn group(
+  kind: catalogue.GroupKind,
+  conditions: List(catalogue.Condition),
+) -> catalogue.ConditionGroup {
+  ConditionGroup(kind, conditions, [])
+}
+
+fn hides_when(groups: List(catalogue.ConditionGroup)) -> catalogue.Modifier {
+  Modifier(Set, "hidden", BoolValue(True), [], groups)
+}
+
+pub fn a_modifier_that_hides_needs_any_one_that_stops_it_holding_test() {
+  // Every condition holds with nothing chosen, and choosing any one child of
+  // a presence condition makes it fail.
+  assert catalogue.needs([
+      hides([
+        at(LessThan, 1.0, "less"),
+        at(AtMost, 0.0, "most"),
+        at(EqualTo, 0.0, "equal"),
+        at(NotInstanceOf, 1.0, "not-instance"),
+        at(AtLeast, 0.0, "least"),
+        at(GreaterThan, -1.0, "greater"),
+        at(NotEqualTo, 1.0, "not-equal"),
+      ]),
+    ])
+    == [["less", "most", "equal", "not-instance"]]
+}
+
+pub fn a_modifier_that_shows_needs_each_that_makes_it_hold_test() {
+  assert catalogue.needs([
+      shows([
+        count(LessThan, "less"),
+        count(AtMost, "most"),
+        count(EqualTo, "equal"),
+        count(NotInstanceOf, "not-instance"),
+        count(AtLeast, "least"),
+        count(GreaterThan, "greater"),
+        count(NotEqualTo, "not-equal"),
+        count(InstanceOf, "instance"),
+        count(OtherCondition("before"), "other"),
+      ]),
+    ])
+    == [["least"], ["greater"], ["not-equal"], ["instance"]]
+}
+
+pub fn an_and_of_two_fewer_than_one_and_a_not_instance_of_test() {
+  // The node shows with a or b, and with c.
+  assert catalogue.needs([
+      hides_when([group(And, [count(LessThan, "a"), count(LessThan, "b")])]),
+      hides([count(NotInstanceOf, "c")]),
+    ])
+    == [["a", "b"], ["c"]]
+}
+
+pub fn the_parts_of_an_or_group_that_is_the_only_part_are_each_needed_test() {
+  let or =
+    ConditionGroup(Or, [count(LessThan, "a"), count(NotInstanceOf, "b")], [
+      group(And, [count(LessThan, "c"), count(LessThan, "d")]),
+      // A part that fails with nothing chosen keeps nothing hidden.
+      group(And, [count(AtLeast, "e"), count(LessThan, "f")]),
+    ])
+  assert catalogue.needs([hides_when([or])]) == [["a"], ["b"], ["c", "d"]]
+  // Beside a condition, the or group is one part of many: any one will do.
+  assert catalogue.needs([
+      Modifier(Set, "hidden", BoolValue(True), [count(LessThan, "g")], [or]),
+    ])
+    == [["g", "a", "b", "c", "d"]]
+}
+
+pub fn a_modifier_that_shows_needs_every_part_test() {
+  let modifier =
+    Modifier(Set, "hidden", BoolValue(False), [count(AtLeast, "a")], [
+      ConditionGroup(And, [count(InstanceOf, "b"), count(LessThan, "x")], [
+        group(Or, [count(InstanceOf, "c"), count(InstanceOf, "d")]),
+      ]),
+      group(Or, [count(InstanceOf, "e"), count(AtLeast, "f")]),
+    ])
+  assert catalogue.needs([modifier]) == [["a"], ["b"], ["c", "d"], ["e", "f"]]
+}
+
+pub fn a_part_that_fails_with_nothing_chosen_needs_nothing_test() {
+  assert catalogue.needs([hides([count(LessThan, "a"), count(AtLeast, "b")])])
+    == []
+  assert catalogue.needs([
+      hides_when([
+        group(And, [count(LessThan, "a")]),
+        group(Or, [count(InstanceOf, "b")]),
+      ]),
+    ])
+    == []
+}
+
+pub fn needs_look_into_groups_at_any_depth_test() {
+  let deep =
+    Modifier(Set, "hidden", BoolValue(True), [count(LessThan, "direct")], [
+      ConditionGroup(Or, [count(AtMost, "in-or"), count(AtLeast, "not-this")], [
+        ConditionGroup(And, [count(LessThan, "in-and")], [
+          group(Or, [count(NotInstanceOf, "deepest")]),
+        ]),
+        group(And, [count(LessThan, "failing"), count(AtLeast, "not-this")]),
+      ]),
+    ])
+  assert catalogue.needs([deep]) == [["direct", "in-or", "in-and", "deepest"]]
+}
+
+pub fn needs_have_no_repeats_and_skip_what_is_not_about_hidden_test() {
+  assert catalogue.needs([
+      hides([count(LessThan, "a"), count(LessThan, ""), count(LessThan, "a")]),
+      hides([count(LessThan, "")]),
+      shows([count(AtLeast, "b"), count(AtLeast, "a")]),
+      Modifier(Set, "name", TextValue("New"), [count(LessThan, "c")], []),
+      Modifier(Increment, "hidden", BoolValue(True), [count(LessThan, "d")], []),
+      Modifier(Set, "hidden", TextValue("true"), [count(LessThan, "e")], []),
+    ])
+    == [["a"], ["b"]]
+  assert catalogue.needs([]) == []
+}

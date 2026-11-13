@@ -229,6 +229,161 @@ pub fn name(node: Node) -> String {
   }
 }
 
+// --- Visibility when nothing is chosen --------------------------------------
+//
+// Whether a node shows is worked out for a list with nothing in it, so every
+// count a condition asks for is zero.
+
+/// Whether a node shows as hidden before anything is chosen: `hidden`, then
+/// each modifier that sets `hidden` and holds, in order.
+pub fn hidden_by_default(hidden: Bool, modifiers: List(Modifier)) -> Bool {
+  list.fold(modifiers, hidden, fn(hidden, modifier) {
+    case modifier {
+      Modifier(kind: Set, field: "hidden", value: BoolValue(value), ..) ->
+        case all_hold(modifier.conditions, modifier.groups) {
+          True -> value
+          False -> hidden
+        }
+      _ -> hidden
+    }
+  })
+}
+
+/// Whether the condition holds for a count of zero.
+fn holds(condition: Condition) -> Bool {
+  let value = condition.value
+  case condition.kind {
+    LessThan -> 0.0 <. value
+    AtMost -> 0.0 <=. value
+    AtLeast -> 0.0 >=. value
+    GreaterThan -> 0.0 >. value
+    EqualTo -> value == 0.0
+    NotEqualTo -> value != 0.0
+    NotInstanceOf -> True
+    InstanceOf | OtherCondition(_) -> False
+  }
+}
+
+fn group_holds(group: ConditionGroup) -> Bool {
+  case group.kind {
+    And -> all_hold(group.conditions, group.groups)
+    Or ->
+      list.any(group.conditions, holds) || list.any(group.groups, group_holds)
+    OtherGroup(_) -> False
+  }
+}
+
+fn all_hold(conditions: List(Condition), groups: List(ConditionGroup)) -> Bool {
+  list.all(conditions, holds) && list.all(groups, group_holds)
+}
+
+/// What a node needs before it shows, from each modifier that sets `hidden`.
+/// The node needs every requirement, and a requirement is met by any one of
+/// its ids. No empty requirement and no repeats, in order.
+pub fn needs(modifiers: List(Modifier)) -> List(List(String)) {
+  modifiers
+  |> list.flat_map(fn(modifier) {
+    case modifier {
+      Modifier(kind: Set, field: "hidden", value: BoolValue(True), ..) ->
+        hiding_needs(modifier.conditions, modifier.groups)
+      Modifier(kind: Set, field: "hidden", value: BoolValue(False), ..) ->
+        showing_needs(modifier.conditions, modifier.groups)
+      _ -> []
+    }
+  })
+  |> list.map(fn(ids) { list.filter(ids, fn(id) { id != "" }) |> list.unique })
+  |> list.filter(fn(ids) { ids != [] })
+  |> list.unique
+}
+
+/// A modifier that hides the node while every part holds. The node shows once
+/// one part fails, so a modifier with a part that already fails needs
+/// nothing, and the parts of an `or` group that is the only part are each
+/// needed. Otherwise one choice of any of its presence conditions will do.
+fn hiding_needs(
+  conditions: List(Condition),
+  groups: List(ConditionGroup),
+) -> List(List(String)) {
+  case all_hold(conditions, groups), conditions, groups {
+    False, _, _ -> []
+    True, [], [ConditionGroup(kind: Or, conditions:, groups:)] ->
+      list.append(
+        list.map(conditions, fn(condition) { hiding_ids([condition], []) }),
+        list.map(groups, fn(group) { hiding_ids([], [group]) }),
+      )
+    True, _, _ -> [hiding_ids(conditions, groups)]
+  }
+}
+
+/// The child ids of the presence conditions in the parts, at any depth, in
+/// order. A part that already fails with nothing chosen keeps nothing hidden,
+/// so it gives none.
+fn hiding_ids(
+  conditions: List(Condition),
+  groups: List(ConditionGroup),
+) -> List(String) {
+  list.append(
+    conditions
+      |> list.filter(fn(condition) {
+        holds(condition) && presence(condition.kind, True)
+      })
+      |> list.map(fn(condition) { condition.child_id }),
+    groups
+      |> list.filter(group_holds)
+      |> list.flat_map(fn(group) { hiding_ids(group.conditions, group.groups) }),
+  )
+}
+
+/// A modifier that shows the node when every part holds: each presence
+/// condition is needed, an `and` group's parts each, and an `or` group's
+/// presence conditions as one requirement.
+fn showing_needs(
+  conditions: List(Condition),
+  groups: List(ConditionGroup),
+) -> List(List(String)) {
+  list.append(
+    conditions
+      |> list.filter(fn(condition) { presence(condition.kind, False) })
+      |> list.map(fn(condition) { [condition.child_id] }),
+    list.flat_map(groups, fn(group) {
+      case group.kind {
+        And -> showing_needs(group.conditions, group.groups)
+        Or | OtherGroup(_) -> [showing_ids(group.conditions, group.groups)]
+      }
+    }),
+  )
+}
+
+fn showing_ids(
+  conditions: List(Condition),
+  groups: List(ConditionGroup),
+) -> List(String) {
+  list.append(
+    conditions
+      |> list.filter(fn(condition) { presence(condition.kind, False) })
+      |> list.map(fn(condition) { condition.child_id }),
+    list.flat_map(groups, fn(group) {
+      showing_ids(group.conditions, group.groups)
+    }),
+  )
+}
+
+/// A presence condition turns in the node's favour when its child is chosen.
+/// For a modifier that hides, that is a `lessThan`, `atMost`, `equalTo` or
+/// `notInstanceOf`, which stops holding. For a modifier that shows, an
+/// `atLeast`, `greaterThan`, `notEqualTo` or `instanceOf`, which starts.
+fn presence(kind: ConditionKind, hides: Bool) -> Bool {
+  case hides, kind {
+    True, LessThan | True, AtMost | True, EqualTo | True, NotInstanceOf -> True
+    False, AtLeast
+    | False, GreaterThan
+    | False, NotEqualTo
+    | False, InstanceOf
+    -> True
+    _, _ -> False
+  }
+}
+
 // --- Reading a file ---------------------------------------------------------
 
 /// The whole file, every node at every depth.

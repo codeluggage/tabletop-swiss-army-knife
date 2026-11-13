@@ -12,12 +12,10 @@ import gleam/result
 import gleam/set.{type Set}
 import gleam/string
 import tabletop/catalogue.{
-  type Catalogue, type Condition, type ConditionGroup, type ConditionKind,
-  type InfoGroup, type InfoLink, type Modifier, type ModifierKind, type Node,
-  type Value, And, AtLeast, AtMost, BoolValue, CategoryNode, Decrement, Entry,
-  EntryLink, EqualTo, ForceNode, GreaterThan, Group, Increment, InfoGroupNode,
-  InstanceOf, LessThan, Modifier, NotEqualTo, NotInstanceOf, Or, OtherCondition,
-  OtherGroup, ProfileNode, RuleNode,
+  type Catalogue, type ConditionKind, type InfoGroup, type InfoLink,
+  type Modifier, type ModifierKind, type Node, type Value, CategoryNode,
+  Decrement, Entry, EntryLink, ForceNode, Group, Increment, InfoGroupNode,
+  ProfileNode, RuleNode,
 }
 import tabletop/sheet.{type Cost, type EntryKind, type Profile, type Rule}
 import tabletop/text
@@ -47,6 +45,9 @@ pub type Page {
     node: Node,
     /// The parents as id and name, outermost first.
     path: List(#(String, String)),
+    /// What the node needs before it shows, as in `Conditional`. Empty when
+    /// it shows by default.
+    needs: List(List(#(String, String))),
     costs: List(Cost),
     cost_lines: List(CostLine),
     profiles: List(Profile),
@@ -105,16 +106,17 @@ pub type CostCondition {
   )
 }
 
-/// A child that is hidden until the nodes in `needs`, as id and name, are
-/// chosen.
+/// An item and what it needs before it shows: requirements, each a list of
+/// nodes as id and name. It needs every requirement, and any one node of a
+/// requirement meets it. Empty when it shows by default.
 pub type Conditional {
-  Conditional(item: Item, needs: List(#(String, String)))
+  Conditional(item: Item, needs: List(List(#(String, String))))
 }
 
-/// A node that needs this page's node. `children` are the visible children
-/// when it is a group or a link to a group.
+/// A node that needs this page's node. `children` are all its children when
+/// it is a group or a link to a group.
 pub type Unlock {
-  Unlock(item: Item, children: List(Item))
+  Unlock(item: Item, children: List(Conditional))
 }
 
 /// A rule whose text names one of the node's keywords, and the node that owns
@@ -161,7 +163,9 @@ pub fn build(catalogues: List(Catalogue)) -> Scope {
     })
   let unlocks =
     list.fold(placed, dict.new(), fn(found, placed) {
-      needs(modifiers(placed.node))
+      catalogue.needs(modifiers(placed.node))
+      |> list.flatten
+      |> list.unique
       |> list.filter(dict.has_key(nodes, _))
       |> list.fold(found, fn(found, need) {
         prepend(found, need, catalogue.id(placed.node))
@@ -236,96 +240,6 @@ pub fn rule_links(scope: Scope) -> text.Links(String) {
 
 // --- Visibility when nothing is chosen --------------------------------------
 
-/// Whether a node shows as hidden before anything is chosen: `hidden`, then
-/// each modifier that sets `hidden` and holds, in order.
-pub fn hidden_by_default(hidden: Bool, modifiers: List(Modifier)) -> Bool {
-  list.fold(modifiers, hidden, fn(hidden, modifier) {
-    case modifier {
-      Modifier(
-        kind: catalogue.Set,
-        field: "hidden",
-        value: BoolValue(value),
-        conditions:,
-        groups:,
-      ) ->
-        case list.all(conditions, holds) && list.all(groups, group_holds) {
-          True -> value
-          False -> hidden
-        }
-      _ -> hidden
-    }
-  })
-}
-
-/// Whether the condition holds for a count of zero.
-fn holds(condition: Condition) -> Bool {
-  let value = condition.value
-  case condition.kind {
-    LessThan -> 0.0 <. value
-    AtMost -> 0.0 <=. value
-    AtLeast -> 0.0 >=. value
-    GreaterThan -> 0.0 >. value
-    EqualTo -> value == 0.0
-    NotEqualTo -> value != 0.0
-    NotInstanceOf -> True
-    InstanceOf | OtherCondition(_) -> False
-  }
-}
-
-fn group_holds(group: ConditionGroup) -> Bool {
-  case group.kind {
-    And ->
-      list.all(group.conditions, holds) && list.all(group.groups, group_holds)
-    Or ->
-      list.any(group.conditions, holds) || list.any(group.groups, group_holds)
-    OtherGroup(_) -> False
-  }
-}
-
-/// The ids of the children a node needs before it shows: from each modifier
-/// that sets `hidden`, the conditions at any depth that choosing the child
-/// turns in the node's favour. No repeats, in order.
-pub fn needs(modifiers: List(Modifier)) -> List(String) {
-  modifiers
-  |> list.flat_map(fn(modifier) {
-    case modifier {
-      Modifier(
-        kind: catalogue.Set,
-        field: "hidden",
-        value: BoolValue(hides),
-        conditions:,
-        groups:,
-      ) ->
-        list.append(conditions, list.flat_map(groups, group_conditions))
-        |> list.filter(fn(condition) { lifts(condition.kind, hides) })
-        |> list.map(fn(condition) { condition.child_id })
-      _ -> []
-    }
-  })
-  |> list.filter(fn(id) { id != "" })
-  |> list.unique
-}
-
-fn group_conditions(group: ConditionGroup) -> List(Condition) {
-  list.append(group.conditions, list.flat_map(group.groups, group_conditions))
-}
-
-/// A modifier that hides stops holding when a count goes up past a
-/// `lessThan`, `atMost`, `equalTo` or `notInstanceOf`. A modifier that shows
-/// starts holding when it goes up to an `atLeast`, `greaterThan`,
-/// `notEqualTo` or `instanceOf`.
-fn lifts(kind: ConditionKind, hides: Bool) -> Bool {
-  case hides, kind {
-    True, LessThan | True, AtMost | True, EqualTo | True, NotInstanceOf -> True
-    False, AtLeast
-    | False, GreaterThan
-    | False, NotEqualTo
-    | False, InstanceOf
-    -> True
-    _, _ -> False
-  }
-}
-
 fn modifiers(node: Node) -> List(Modifier) {
   case node {
     Entry(modifiers:, ..) | Group(modifiers:, ..) | EntryLink(modifiers:, ..) ->
@@ -364,10 +278,42 @@ fn hidden(scope: Scope, node: Node) -> Bool {
       Entry(hidden:, modifiers:, ..)
       | Group(hidden:, modifiers:, ..)
       | EntryLink(hidden:, modifiers:, ..) ->
-        hidden_by_default(hidden, modifiers)
+        catalogue.hidden_by_default(hidden, modifiers)
       _ -> False
     }
   })
+}
+
+/// What a node needs before it shows, as id and name: from its modifiers,
+/// and its target's for an entry link. A requirement met by one of `met` is
+/// left out, as is an id that is no node in scope and a requirement left with
+/// no name.
+fn named_needs(
+  scope: Scope,
+  node: Node,
+  met: List(String),
+) -> List(List(#(String, String))) {
+  with_target(scope, node)
+  |> list.flat_map(modifiers)
+  |> catalogue.needs
+  |> list.filter(fn(ids) { !list.any(ids, list.contains(met, _)) })
+  |> list.map(list.filter_map(_, named(scope, _)))
+  |> list.filter(fn(names) { names != [] })
+}
+
+/// The item of a child with what it needs before it shows, nothing when it
+/// shows by default. `met` are the ids of the page's node.
+fn conditional(
+  scope: Scope,
+  child: Node,
+  met: List(String),
+) -> Result(Conditional, Nil) {
+  use item <- result.map(item(scope, child))
+  let needs = case hidden(scope, child) {
+    True -> named_needs(scope, child, met)
+    False -> []
+  }
+  Conditional(item:, needs:)
 }
 
 // --- The page ---------------------------------------------------------------
@@ -376,6 +322,7 @@ pub fn page(scope: Scope, id: String) -> Result(Page, Nil) {
   use placed <- result.map(find(scope, id))
   let node = placed.node
   let parts = with_target(scope, node)
+  let met = list.map(parts, catalogue.id)
   let walk = enter(scope, Walk(set.new(), [], []), node, True)
   let own_rules = case node {
     RuleNode(rule) -> [rule]
@@ -402,7 +349,7 @@ pub fn page(scope: Scope, id: String) -> Result(Page, Nil) {
     })
     |> list.map(fn(category) { #(category.id, category.name) })
     |> list.unique
-  let #(conditional, contains) =
+  let #(hidden_children, contains) =
     list.flat_map(parts, children) |> list.partition(hidden(scope, _))
   let unlocks =
     list.flat_map(parts, fn(part) {
@@ -421,6 +368,10 @@ pub fn page(scope: Scope, id: String) -> Result(Page, Nil) {
   Page(
     node:,
     path: path(scope, placed.parent_id, []),
+    needs: case hidden(scope, node) {
+      True -> named_needs(scope, node, [])
+      False -> []
+    },
     costs: without_zeros(costs),
     cost_lines: cost_lines(scope, costs, list.flat_map(parts, modifiers)),
     profiles: list.reverse(walk.profiles),
@@ -428,15 +379,7 @@ pub fn page(scope: Scope, id: String) -> Result(Page, Nil) {
     linked_rules:,
     keywords:,
     contains: items(scope, contains),
-    conditional: list.filter_map(conditional, fn(child) {
-      use item <- result.map(item(scope, child))
-      let needs =
-        with_target(scope, child)
-        |> list.flat_map(modifiers)
-        |> needs
-        |> list.filter_map(named(scope, _))
-      Conditional(item:, needs:)
-    }),
+    conditional: list.filter_map(hidden_children, conditional(scope, _, met)),
     unlocks: list.filter_map(unlocks, fn(id) {
       use placed <- result.try(find(scope, id))
       use item <- result.map(item(scope, placed.node))
@@ -445,8 +388,10 @@ pub fn page(scope: Scope, id: String) -> Result(Page, Nil) {
           children
         _, _ -> []
       }
-      let visible = list.filter(group, fn(child) { !hidden(scope, child) })
-      Unlock(item:, children: items(scope, visible))
+      Unlock(
+        item:,
+        children: list.filter_map(group, conditional(scope, _, met)),
+      )
     }),
     with_keyword: list.take(having, max_with_keyword),
     with_keyword_count: list.length(having),

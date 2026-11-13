@@ -196,6 +196,11 @@ pub fn a_node_screen_builds_its_scope_one_file_at_a_time_test() {
     render(data.node_page(state, "sys-picnic", "cat-teapot", "l-captain")),
     "Kettle Captain",
   )
+  // A node hidden by default says what it needs under its title.
+  assert string.contains(
+    render(data.node_page(state, "sys-picnic", "cat-teapot", "e-mascot")),
+    "Only with Teacup Sergeant",
+  )
   // A second node in the same catalogue starts nothing.
   let other = route.NodePage("sys-picnic", "cat-teapot", "l-squad")
   let #(again, _) = data.enter(state, other, None)
@@ -276,6 +281,17 @@ pub fn the_words_for_a_cost_line_test() {
     == "12 abc when is Name"
   assert data.cost_line_text(CostLine(..line, conditions: Grouped))
     == "12 abc in some cases"
+}
+
+pub fn the_words_for_what_an_item_needs_test() {
+  let abc = #("x-1", "Abc")
+  let def = #("x-2", "Def")
+  let ghi = #("x-3", "Ghi")
+  assert data.only_with([]) == ""
+  assert data.only_with([[abc]]) == "Only with Abc"
+  assert data.only_with([[abc, def], [ghi]]) == "Only with Abc or Def, and Ghi"
+  assert data.only_with([[abc], [def, ghi], [abc]])
+    == "Only with Abc, and Def or Ghi, and Abc"
 }
 
 // --- Links from a list ------------------------------------------------------

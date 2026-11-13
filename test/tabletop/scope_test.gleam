@@ -3,11 +3,10 @@ import gleam/list
 import gleam/option.{None, Some}
 import simplifile
 import tabletop/catalogue.{
-  type Catalogue, type Condition, type Modifier, And, AtLeast, AtMost, BoolValue,
+  type Catalogue, type Condition, type Modifier, And, AtLeast, BoolValue,
   Catalogue, CategoryNode, Condition, ConditionGroup, Decrement, Entry,
-  EntryLink, EqualTo, ForceNode, GreaterThan, Group, Increment, InstanceOf,
-  LessThan, Modifier, NotEqualTo, NotInstanceOf, NumberValue, Or, OtherCondition,
-  OtherGroup, ProfileNode, RuleNode, Set, TextValue,
+  EntryLink, ForceNode, Group, LessThan, Modifier, NotInstanceOf, NumberValue,
+  ProfileNode, RuleNode, Set,
 }
 import tabletop/data_index
 import tabletop/scope.{
@@ -63,6 +62,11 @@ fn item_ids(items: List(Item)) -> List(String) {
 
 fn upgrade(id: String, name: String) -> Item {
   Item(id, name, EntryItem(Upgrade), [])
+}
+
+/// An upgrade that shows by default, as a child in a list on the page.
+fn shown(id: String, name: String) -> scope.Conditional {
+  Conditional(upgrade(id, name), [])
 }
 
 // --- The fixture, case by case ----------------------------------------------
@@ -150,7 +154,7 @@ pub fn a_link_hidden_by_default_is_conditional_and_brings_no_profiles_test() {
   assert page.conditional
     == [
       Conditional(Item("l-squad-banquet", "Banquet Cutlery", LinkItem, []), [
-        #("f-banquet", "Banquet Table"),
+        [#("f-banquet", "Banquet Table")],
       ]),
     ]
   // The force entry, nested in another in its file, unlocks the link, and
@@ -159,7 +163,7 @@ pub fn a_link_hidden_by_default_is_conditional_and_brings_no_profiles_test() {
   assert page_of("f-banquet").unlocks
     == [
       Unlock(Item("l-squad-banquet", "Banquet Cutlery", LinkItem, []), [
-        upgrade("e-fork", "Banquet Fork"),
+        shown("e-fork", "Banquet Fork"),
       ]),
     ]
   // Asked for by itself, the hidden link still shows what it holds.
@@ -183,13 +187,13 @@ pub fn each_child_group_needs_exactly_its_own_entry_test() {
   assert favours.conditional
     == [
       Conditional(Item("g-mint-favours", "Mint Favours", GroupItem, []), [
-        #("e-mint", "Mint"),
+        [#("e-mint", "Mint")],
       ]),
       Conditional(Item("g-chai-favours", "Chai Favours", GroupItem, []), [
-        #("e-chai", "Chai"),
+        [#("e-chai", "Chai")],
       ]),
       Conditional(Item("g-oolong-favours", "Oolong Favours", GroupItem, []), [
-        #("e-oolong", "Oolong"),
+        [#("e-oolong", "Oolong")],
       ]),
     ]
   // The link to the group gives the same page of children.
@@ -200,14 +204,14 @@ pub fn each_entry_unlocks_exactly_its_own_child_group_test() {
   assert page_of("e-mint").unlocks
     == [
       Unlock(Item("g-mint-favours", "Mint Favours", GroupItem, []), [
-        upgrade("e-mint-sprig", "Mint Sprig"),
-        upgrade("e-mint-ice", "Mint Ice"),
+        shown("e-mint-sprig", "Mint Sprig"),
+        shown("e-mint-ice", "Mint Ice"),
       ]),
     ]
   assert page_of("e-chai").unlocks
     == [
       Unlock(Item("g-chai-favours", "Chai Favours", GroupItem, []), [
-        upgrade("e-chai-spice", "Chai Spice"),
+        shown("e-chai-spice", "Chai Spice"),
       ]),
     ]
 }
@@ -216,7 +220,7 @@ pub fn a_hidden_modifier_inside_a_modifier_group_counts_test() {
   assert page_of("e-oolong").unlocks
     == [
       Unlock(Item("g-oolong-favours", "Oolong Favours", GroupItem, []), [
-        upgrade("e-oolong-leaf", "Oolong Leaf"),
+        shown("e-oolong-leaf", "Oolong Leaf"),
       ]),
     ]
 }
@@ -226,7 +230,7 @@ pub fn a_hidden_child_that_a_modifier_shows_is_conditional_test() {
   let cups = page_of("g-cups")
   assert item_ids(cups.contains) == ["e-teacup", "e-sergeant"]
   assert cups.conditional
-    == [Conditional(mascot, [#("e-sergeant", "Teacup Sergeant")])]
+    == [Conditional(mascot, [[#("e-sergeant", "Teacup Sergeant")]])]
   assert page_of("e-sergeant").unlocks == [Unlock(mascot, [])]
   // The page of the hidden node itself still shows it.
   assert profile_names(page_of("e-mascot")) == ["Sugar Cube Mascot"]
@@ -455,155 +459,129 @@ pub fn a_link_to_nothing_still_has_a_page_test() {
   assert profile_names(page) == ["Lost"]
 }
 
-// --- Visibility when nothing is chosen --------------------------------------
+// --- What a node needs, on the page ----------------------------------------
 
-fn when(kind: catalogue.ConditionKind, value: Float) -> Condition {
-  Condition(kind, "selections", "roster", value, "e-any")
+fn on(kind: catalogue.ConditionKind, child_id: String) -> Condition {
+  Condition(kind, "selections", "roster", 1.0, child_id)
 }
 
 fn hide(conditions: List(Condition)) -> Modifier {
   Modifier(Set, "hidden", BoolValue(True), conditions, [])
 }
 
-fn show(conditions: List(Condition)) -> Modifier {
-  Modifier(Set, "hidden", BoolValue(False), conditions, [])
-}
-
-/// Whether a condition holds for a count of zero: a visible node with one
-/// modifier that hides it on this condition.
-fn holds(kind: catalogue.ConditionKind, value: Float) -> Bool {
-  scope.hidden_by_default(False, [hide([when(kind, value)])])
-}
-
-pub fn hidden_starts_from_the_nodes_own_flag_test() {
-  assert !scope.hidden_by_default(False, [])
-  assert scope.hidden_by_default(True, [])
-}
-
-pub fn each_condition_kind_is_checked_against_a_count_of_zero_test() {
-  assert holds(LessThan, 1.0)
-  assert !holds(LessThan, 0.0)
-  assert holds(AtMost, 0.0)
-  assert !holds(AtMost, -1.0)
-  assert holds(AtLeast, 0.0)
-  assert !holds(AtLeast, 1.0)
-  assert holds(GreaterThan, -1.0)
-  assert !holds(GreaterThan, 0.0)
-  assert holds(EqualTo, 0.0)
-  assert !holds(EqualTo, 1.0)
-  assert holds(NotEqualTo, 1.0)
-  assert !holds(NotEqualTo, 0.0)
-  assert holds(NotInstanceOf, 1.0)
-  assert !holds(InstanceOf, 0.0)
-  assert !holds(OtherCondition("before"), 0.0)
-}
-
-pub fn a_modifier_holds_when_all_its_conditions_and_groups_hold_test() {
-  let yes = when(LessThan, 1.0)
-  let no = when(AtLeast, 1.0)
-  let grouped = fn(kind, conditions, groups) {
-    scope.hidden_by_default(False, [
-      Modifier(Set, "hidden", BoolValue(True), [], [
-        ConditionGroup(kind, conditions, groups),
-      ]),
-    ])
-  }
-  // A modifier with no condition holds.
-  assert scope.hidden_by_default(False, [hide([])])
-  assert scope.hidden_by_default(False, [hide([yes, yes])])
-  assert !scope.hidden_by_default(False, [hide([yes, no])])
-  // An and group needs every part, an or group any part.
-  assert grouped(And, [yes, yes], [])
-  assert !grouped(And, [yes, no], [])
-  assert grouped(And, [], [])
-  assert grouped(Or, [no, yes], [])
-  assert !grouped(Or, [no, no], [])
-  assert !grouped(Or, [], [])
-  // Groups inside groups.
-  assert grouped(And, [yes], [ConditionGroup(Or, [no, yes], [])])
-  assert !grouped(And, [yes], [ConditionGroup(Or, [no], [])])
-  assert grouped(Or, [no], [ConditionGroup(And, [yes], [])])
-  // Any other kind of group never holds.
-  assert !grouped(OtherGroup("count"), [yes], [])
-  // Conditions and groups together: both must hold.
-  let both = fn(condition, group_condition) {
-    scope.hidden_by_default(False, [
-      Modifier(Set, "hidden", BoolValue(True), [condition], [
-        ConditionGroup(And, [group_condition], []),
-      ]),
-    ])
-  }
-  assert both(yes, yes)
-  assert !both(yes, no)
-  assert !both(no, yes)
-}
-
-pub fn modifiers_apply_in_order_and_only_those_that_set_hidden_test() {
-  assert !scope.hidden_by_default(False, [hide([]), show([])])
-  assert scope.hidden_by_default(False, [show([]), hide([])])
-  assert !scope.hidden_by_default(True, [show([when(AtLeast, 0.0)])])
-  assert scope.hidden_by_default(True, [show([when(AtLeast, 1.0)])])
-  // Another kind, another field, or a value that is not a bool: ignored.
-  assert !scope.hidden_by_default(False, [
-    Modifier(Increment, "hidden", BoolValue(True), [], []),
-    Modifier(Set, "name", BoolValue(True), [], []),
-    Modifier(Set, "hidden", TextValue("true"), [], []),
-    Modifier(Set, "hidden", NumberValue(1.0), [], []),
+/// An upgrade hidden until any one of `ids` is chosen, the shape the data
+/// gives as an and group of two or more "fewer than 1" conditions.
+fn needing(
+  id: String,
+  name: String,
+  ids: List(String),
+  more: List(Modifier),
+) -> catalogue.Node {
+  let assert Entry(..) as plain = entry(id, name)
+  let any =
+    ConditionGroup(
+      And,
+      list.map(ids, fn(child_id) { on(LessThan, child_id) }),
+      [],
+    )
+  Entry(..plain, modifiers: [
+    Modifier(Set, "hidden", BoolValue(True), [], [any]),
+    ..more
   ])
 }
 
-// --- Needs ------------------------------------------------------------------
-
-fn on(kind: catalogue.ConditionKind, child_id: String) -> Condition {
-  Condition(kind, "selections", "roster", 1.0, child_id)
-}
-
-fn every_kind() -> List(Condition) {
-  [
-    on(LessThan, "less"),
-    on(AtMost, "most"),
-    on(EqualTo, "equal"),
-    on(NotInstanceOf, "not-instance"),
-    on(AtLeast, "least"),
-    on(GreaterThan, "greater"),
-    on(NotEqualTo, "not-equal"),
-    on(InstanceOf, "instance"),
-    on(OtherCondition("before"), "other"),
-  ]
-}
-
-pub fn a_modifier_that_hides_needs_what_would_stop_it_holding_test() {
-  assert scope.needs([hide(every_kind())])
-    == ["less", "most", "equal", "not-instance"]
-}
-
-pub fn a_modifier_that_shows_needs_what_would_make_it_hold_test() {
-  assert scope.needs([show(every_kind())])
-    == ["least", "greater", "not-equal", "instance"]
-}
-
-pub fn needs_look_into_groups_at_any_depth_test() {
-  let deep =
-    Modifier(Set, "hidden", BoolValue(True), [on(LessThan, "direct")], [
-      ConditionGroup(Or, [on(AtMost, "in-or"), on(AtLeast, "not-this")], [
-        ConditionGroup(And, [on(EqualTo, "in-and")], [
-          ConditionGroup(OtherGroup("count"), [on(LessThan, "deepest")], []),
+/// A plan that unlocks a group of extras, each extra with its own needs.
+fn extras() -> Scope {
+  let extras =
+    Group(
+      "g-extras",
+      "Extras",
+      False,
+      [
+        entry("e-cap", "Cap"),
+        needing("e-hat", "Hat", ["e-tall", "e-gone", "e-short"], []),
+        needing("e-pin", "Pin", ["e-plan", "e-tall"], []),
+        needing("e-bow", "Bow", ["e-tall"], [
+          hide([on(NotInstanceOf, "e-short")]),
         ]),
-      ]),
-    ])
-  assert scope.needs([deep]) == ["direct", "in-or", "in-and", "deepest"]
+      ],
+      [hide([on(LessThan, "e-plan")])],
+    )
+  let link =
+    EntryLink(
+      id: "l-extras",
+      name: "Extras",
+      target_id: "g-extras",
+      target_kind: catalogue.ToGroup,
+      hidden: False,
+      costs: [],
+      categories: [],
+      profiles: [],
+      info_links: [],
+      children: [],
+      modifiers: [hide([on(LessThan, "e-short")])],
+    )
+  scope.build([
+    file([
+      entry("e-plan", "Plan"),
+      entry("e-tall", "Tall"),
+      entry("e-short", "Short"),
+      extras,
+      link,
+    ]),
+  ])
 }
 
-pub fn needs_have_no_repeats_and_skip_what_is_not_about_hidden_test() {
-  assert scope.needs([
-      hide([on(LessThan, "a"), on(LessThan, "")]),
-      show([on(AtLeast, "b"), on(AtLeast, "a")]),
-      Modifier(Set, "name", TextValue("New"), [on(LessThan, "c")], []),
-      Modifier(Increment, "hidden", BoolValue(True), [on(LessThan, "d")], []),
-      Modifier(Set, "hidden", TextValue("true"), [on(LessThan, "e")], []),
-    ])
-    == ["a", "b"]
-  assert scope.needs([]) == []
+fn made_page(made: Scope, id: String) -> Page {
+  let assert Ok(page) = scope.page(made, id)
+  page
+}
+
+pub fn an_unlocked_group_lists_all_its_children_with_their_needs_test() {
+  let tall = #("e-tall", "Tall")
+  let short = #("e-short", "Short")
+  // The pin needs the plan or the tall: the plan's page meets that. The id
+  // that is no node is left out of the hat's names.
+  assert made_page(extras(), "e-plan").unlocks
+    == [
+      Unlock(Item("g-extras", "Extras", GroupItem, []), [
+        shown("e-cap", "Cap"),
+        Conditional(upgrade("e-hat", "Hat"), [[tall, short]]),
+        Conditional(upgrade("e-pin", "Pin"), []),
+        Conditional(upgrade("e-bow", "Bow"), [[tall], [short]]),
+      ]),
+      // The pin names the plan as well, so the plan unlocks it by itself too.
+      Unlock(upgrade("e-pin", "Pin"), []),
+    ]
+}
+
+pub fn conditional_items_get_the_same_needs_test() {
+  let page = made_page(extras(), "g-extras")
+  assert item_ids(page.contains) == ["e-cap"]
+  assert page.conditional
+    == [
+      Conditional(upgrade("e-hat", "Hat"), [
+        [#("e-tall", "Tall"), #("e-short", "Short")],
+      ]),
+      Conditional(upgrade("e-pin", "Pin"), [
+        [#("e-plan", "Plan"), #("e-tall", "Tall")],
+      ]),
+      Conditional(upgrade("e-bow", "Bow"), [
+        [#("e-tall", "Tall")],
+        [#("e-short", "Short")],
+      ]),
+    ]
+}
+
+pub fn a_node_says_what_it_needs_test() {
+  assert made_page(extras(), "g-extras").needs == [[#("e-plan", "Plan")]]
+  // A link needs what it needs and what its target needs.
+  assert made_page(extras(), "l-extras").needs
+    == [[#("e-short", "Short")], [#("e-plan", "Plan")]]
+  // A node that shows by default needs nothing.
+  assert made_page(extras(), "e-cap").needs == []
+  assert page_of("e-mascot").needs == [[#("e-sergeant", "Teacup Sergeant")]]
+  assert page_of("e-sergeant").needs == []
 }
 
 pub fn unlocks_keep_only_ids_that_are_nodes_test() {

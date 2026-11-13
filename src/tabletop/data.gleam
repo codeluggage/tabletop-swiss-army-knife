@@ -673,6 +673,21 @@ pub fn cost_line_text(line: CostLine) -> String {
   sign <> value <> " " <> line.cost_name <> when
 }
 
+/// What an item needs in words, such as `Only with Abc or Def, and Ghi`: the
+/// names of a requirement joined by "or", and the requirements by ", and".
+/// Empty when it needs nothing.
+pub fn only_with(needs: List(List(#(String, String)))) -> String {
+  case needs {
+    [] -> ""
+    _ ->
+      "Only with "
+      <> list.map(needs, fn(names) {
+        list.map(names, fn(named) { named.1 }) |> string.join(" or ")
+      })
+      |> string.join(", and ")
+  }
+}
+
 /// The words for a condition kind are the data format's, not the game's.
 fn condition_text(condition: scope.CostCondition) -> String {
   let count = " " <> sheet.format_value(condition.value)
@@ -1135,7 +1150,16 @@ fn node_view(
       0,
     )
   list.flatten([
-    [back, path, html.h1([], [html.text(catalogue.name(page.node))])],
+    [
+      back,
+      path,
+      html.h1([], [html.text(catalogue.name(page.node))]),
+      case page.needs {
+        [] -> element.none()
+        needs ->
+          html.p([attribute.class("note")], [html.text(only_with(needs))])
+      },
+    ],
     case is_group {
       True -> [contains]
       False -> []
@@ -1176,12 +1200,7 @@ fn node_view(
       },
       rows_section(
         "Conditional",
-        list.map(page.conditional, fn(conditional) {
-          let needs = list.map(conditional.needs, fn(need) { need.1 })
-          item_row(node_route, conditional.item, [
-            "Only with " <> string.join(needs, ", "),
-          ])
-        }),
+        list.map(page.conditional, conditional_row(node_route, _)),
         0,
       ),
       rows_section(
@@ -1194,7 +1213,7 @@ fn node_view(
               children ->
                 html.ul(
                   [attribute.class("rows children")],
-                  list.map(children, item_row(node_route, _, [])),
+                  list.map(children, conditional_row(node_route, _)),
                 )
             },
           ])
@@ -1288,6 +1307,14 @@ fn item_row(
   under: List(String),
 ) -> Element(Msg) {
   html.li([], [item_link(node_route, item, under)])
+}
+
+/// An item with its "Only with" line, when it has one.
+fn conditional_row(
+  node_route: fn(String) -> Route,
+  conditional: scope.Conditional,
+) -> Element(Msg) {
+  item_row(node_route, conditional.item, [only_with(conditional.needs)])
 }
 
 /// An item's name and costs, then the lines in `under`.
