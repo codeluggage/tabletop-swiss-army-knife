@@ -212,7 +212,7 @@ pub fn update(
     FileUnpacked(unpacked) ->
       case state.importing {
         Some(Import(left: [entry, ..left], ..) as job) -> {
-          let read = case summary(unpacked) {
+          let read = case read_data(unpacked, catalogue.summarise) {
             Ok(summary) -> [#(entry.name, summary), ..job.read]
             Error(Nil) -> job.read
           }
@@ -305,7 +305,7 @@ pub fn update(
         Some(Open(scope: Decoding(left: [next, ..left], total:), ..) as open)
           if open.set_id == set_id && next == file
         ->
-          case decode_file(result) {
+          case read_data(result, catalogue.decode) {
             Ok(decoded) ->
               Open(
                 ..open,
@@ -390,11 +390,14 @@ fn unpack_for_import(archive: BitArray, entry: zip.Entry) -> Effect(Msg) {
   effects.from_promise(fn() { bytes.unpack(archive, entry) }, FileUnpacked)
 }
 
-/// The summary of an unpacked entry, when it is a data file.
-fn summary(unpacked: Result(BitArray, UnpackError)) -> Result(Summary, Nil) {
+/// An unpacked entry as text, through `read`, when it is a data file.
+fn read_data(
+  unpacked: Result(BitArray, UnpackError),
+  read: fn(String) -> Result(a, catalogue.FileError),
+) -> Result(a, Nil) {
   use unpacked <- result.try(result.replace_error(unpacked, Nil))
   use text <- result.try(bit_array.to_string(unpacked))
-  catalogue.summarise(text) |> result.replace_error(Nil)
+  read(text) |> result.replace_error(Nil)
 }
 
 /// Every entry is read: build the index and save both records. The import
@@ -587,14 +590,6 @@ fn decode_next(state: State, open: Open) -> #(State, Effect(Msg)) {
     }
     _, _ -> #(State(..state, open: Some(open)), effect.none())
   }
-}
-
-fn decode_file(
-  unpacked: Result(BitArray, UnpackError),
-) -> Result(Catalogue, Nil) {
-  use unpacked <- result.try(result.replace_error(unpacked, Nil))
-  use text <- result.try(bit_array.to_string(unpacked))
-  catalogue.decode(text) |> result.replace_error(Nil)
 }
 
 fn failed(
