@@ -7,6 +7,7 @@
 //// `tabletop/data`.
 
 import gleam/bit_array
+import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
@@ -236,10 +237,11 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
 
 /// A zip by its signature, text when the bytes are UTF-8, else neither.
 pub fn file_kind(bytes: BitArray) -> FileKind {
-  case zip.is_zip(bytes), bit_array.to_string(bytes) {
-    True, _ -> ZipKind
-    False, Ok(text) -> TextKind(text)
-    False, Error(Nil) -> NeitherKind
+  // A zip is never decoded as text.
+  use <- bool.guard(zip.is_zip(bytes), ZipKind)
+  case bit_array.to_string(bytes) {
+    Ok(text) -> TextKind(text)
+    Error(Nil) -> NeitherKind
   }
 }
 
