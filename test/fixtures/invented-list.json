@@ -97,6 +97,7 @@
           },
           {
             "id": "u-squad",
+            "entryId": "l-squad::e-squad",
             "name": "Teacup Squad",
             "type": "unit",
             "number": 1,

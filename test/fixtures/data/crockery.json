@@ -1,0 +1,151 @@
+{
+  "catalogue": {
+    "id": "cat-crockery",
+    "name": "Crockery",
+    "library": false,
+    "catalogueLinks": [{ "targetId": "cat-pantry", "importRootEntries": true }],
+    "entryLinks": [
+      {
+        "id": "l-guest-captain",
+        "name": "Kettle Captain",
+        "targetId": "e-captain",
+        "type": "selectionEntry",
+        "costs": [{ "name": "acorns", "typeId": "ct-acorns", "value": 60 }],
+        "categoryLinks": [
+          { "id": "cl-guest-line", "targetId": "c-line", "name": "Line", "primary": true }
+        ]
+      }
+    ],
+    "selectionEntries": [
+      {
+        "id": "e-brew",
+        "name": "Brew",
+        "type": "upgrade",
+        "entryLinks": [
+          { "id": "l-brews", "name": "Brews", "targetId": "g-brews", "type": "selectionEntryGroup" },
+          { "id": "l-favours", "name": "Favours", "targetId": "g-favours", "type": "selectionEntryGroup" }
+        ]
+      }
+    ],
+    "sharedSelectionEntryGroups": [
+      {
+        "id": "g-brews",
+        "name": "Brews",
+        "selectionEntries": [
+          {
+            "id": "e-mint",
+            "name": "Mint",
+            "type": "upgrade",
+            "rules": [
+              { "id": "r-mint", "name": "Mint Breeze", "description": "A Kettle steeped in mint cools one step." }
+            ]
+          },
+          {
+            "id": "e-chai",
+            "name": "Chai",
+            "type": "upgrade",
+            "rules": [
+              { "id": "r-chai", "name": "Chai Warmth", "description": "Adds one to Steam." }
+            ]
+          },
+          {
+            "id": "e-oolong",
+            "name": "Oolong",
+            "type": "upgrade",
+            "rules": [
+              { "id": "r-oolong", "name": "Oolong Calm", "description": "Nothing rattles this turn." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "g-favours",
+        "name": "Favours",
+        "selectionEntryGroups": [
+          {
+            "id": "g-mint-favours",
+            "name": "Mint Favours",
+            "modifiers": [
+              {
+                "type": "set",
+                "field": "hidden",
+                "value": true,
+                "conditions": [
+                  { "type": "lessThan", "value": 1, "field": "selections", "scope": "roster", "childId": "e-mint" }
+                ]
+              },
+              {
+                "type": "set",
+                "field": "hidden",
+                "value": true,
+                "conditions": [
+                  { "type": "atLeast", "value": 1, "field": "selections", "scope": "roster", "childId": "e-chai" }
+                ]
+              }
+            ],
+            "selectionEntries": [
+              { "id": "e-mint-sprig", "name": "Mint Sprig", "type": "upgrade" },
+              { "id": "e-mint-ice", "name": "Mint Ice", "type": "upgrade" }
+            ]
+          },
+          {
+            "id": "g-chai-favours",
+            "name": "Chai Favours",
+            "modifiers": [
+              {
+                "type": "set",
+                "field": "hidden",
+                "value": true,
+                "conditionGroups": [
+                  {
+                    "type": "or",
+                    "conditions": [
+                      { "type": "lessThan", "value": 1, "field": "selections", "scope": "roster", "childId": "e-chai" }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "set",
+                "field": "hidden",
+                "value": true,
+                "conditions": [
+                  { "type": "atLeast", "value": 1, "field": "selections", "scope": "roster", "childId": "e-oolong" }
+                ]
+              }
+            ],
+            "selectionEntries": [
+              { "id": "e-chai-spice", "name": "Chai Spice", "type": "upgrade" }
+            ]
+          },
+          {
+            "id": "g-oolong-favours",
+            "name": "Oolong Favours",
+            "modifiers": [
+              {
+                "type": "set",
+                "field": "hidden",
+                "value": true,
+                "conditions": [
+                  { "type": "atLeast", "value": 1, "field": "selections", "scope": "roster", "childId": "e-mint" }
+                ]
+              }
+            ],
+            "modifierGroups": [
+              {
+                "type": "and",
+                "conditions": [
+                  { "type": "lessThan", "value": 1, "field": "selections", "scope": "roster", "childId": "e-oolong" }
+                ],
+                "modifiers": [{ "type": "set", "field": "hidden", "value": true }]
+              }
+            ],
+            "selectionEntries": [
+              { "id": "e-oolong-leaf", "name": "Oolong Leaf", "type": "upgrade" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

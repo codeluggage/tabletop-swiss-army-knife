@@ -1,0 +1,54 @@
+{
+  "gameSystem": {
+    "id": "sys-picnic",
+    "name": "Picnic Skirmish",
+    "categoryEntries": [
+      { "id": "c-leader", "name": "Leader" },
+      { "id": "c-line", "name": "Line" },
+      { "id": "c-kettle", "name": "Kettle" },
+      { "id": "c-golem", "name": "Golem (old)" }
+    ],
+    "forceEntries": [
+      {
+        "id": "f-picnic",
+        "name": "Picnic Host",
+        "forceEntries": [{ "id": "f-banquet", "name": "Banquet Table" }]
+      }
+    ],
+    "selectionEntries": [
+      {
+        "id": "e-weather",
+        "name": "Weather",
+        "type": "upgrade",
+        "selectionEntries": [
+          { "id": "e-drizzle", "name": "Drizzle", "type": "upgrade" },
+          { "id": "e-sunshine", "name": "Sunshine", "type": "upgrade" }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "id": "r-teatime",
+        "name": "Teatime",
+        "description": "At **teatime** every golem may rest.\nRest mends one rivet."
+      }
+    ],
+    "sharedRules": [
+      {
+        "id": "r-steam-vent-old",
+        "name": "Steam Vent",
+        "description": "An older wording: puff once."
+      },
+      {
+        "id": "r-boil-over",
+        "name": "Boil Over",
+        "description": "Each Kettle within reach puffs twice."
+      },
+      {
+        "id": "r-drums",
+        "name": "Morning Drums",
+        "description": "Kettledrums sound at dawn."
+      }
+    ]
+  }
+}

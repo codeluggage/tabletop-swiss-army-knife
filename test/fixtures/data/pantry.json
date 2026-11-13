@@ -1,0 +1,256 @@
+{
+  "catalogue": {
+    "id": "cat-pantry",
+    "name": "Pantry",
+    "library": true,
+    "categoryEntries": [{ "id": "c-golem", "name": "Golem" }],
+    "entryLinks": [
+      {
+        "id": "l-walker",
+        "name": "Sugar Bowl Walker",
+        "targetId": "e-walker",
+        "type": "selectionEntry"
+      }
+    ],
+    "sharedSelectionEntries": [
+      {
+        "id": "e-captain",
+        "name": "Kettle Captain",
+        "type": "model",
+        "hidden": false,
+        "constraints": [
+          { "id": "e-captain", "type": "max", "value": 1, "field": "selections", "scope": "parent" },
+          { "id": "k-shared", "type": "min", "value": 0, "field": "selections", "scope": "parent" }
+        ],
+        "costs": [{ "name": "acorns", "typeId": "ct-acorns", "value": 40 }],
+        "categoryLinks": [
+          { "id": "cl-captain-leader", "targetId": "c-leader", "name": "Leader", "primary": true },
+          { "id": "cl-captain-kettle", "targetId": "c-kettle", "name": "Kettle", "primary": false }
+        ],
+        "profiles": [
+          {
+            "id": "p-captain",
+            "name": "Kettle Captain",
+            "typeName": "Golem",
+            "characteristics": [
+              { "name": "Stride", "$text": "5\"" },
+              { "name": "Grip", "$text": "3+" }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "r-steam-vent",
+            "name": "Steam Vent",
+            "description": "Puff once.\nThen **puff again**."
+          }
+        ],
+        "infoLinks": [
+          { "id": "il-captain-whistle", "name": "Whistle", "targetId": "p-whistle", "type": "profile" }
+        ],
+        "modifiers": [
+          {
+            "type": "set",
+            "field": "ct-acorns",
+            "value": 55,
+            "conditions": [
+              { "id": "k-shared", "type": "atLeast", "value": 1, "field": "selections", "scope": "self", "childId": "e-ladle" }
+            ]
+          }
+        ],
+        "selectionEntries": [
+          {
+            "id": "e-ladle",
+            "name": "Ladle",
+            "type": "upgrade",
+            "costs": [{ "name": "acorns", "typeId": "ct-acorns", "value": 5 }],
+            "profiles": [
+              {
+                "id": "p-ladle",
+                "name": "Ladle",
+                "typeName": "Gadget",
+                "characteristics": [
+                  { "name": "Reach", "$text": "1\"" },
+                  { "name": "Traits", "$text": "Steam Vent-Fused 3+, Glow 2" }
+                ]
+              }
+            ],
+            "modifiers": [
+              {
+                "type": "decrement",
+                "field": "ct-acorns",
+                "value": 2,
+                "conditionGroups": [
+                  {
+                    "type": "and",
+                    "conditions": [
+                      { "id": "k-shared", "type": "atLeast", "value": 2, "field": "selections", "scope": "roster", "childId": "e-captain" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "e-walker",
+        "name": "Sugar Bowl Walker",
+        "type": "model",
+        "costs": [
+          { "name": "acorns", "typeId": "ct-acorns", "value": 30 },
+          { "name": "favour", "typeId": "ct-favour", "value": 1.5 },
+          { "name": "crumbs", "typeId": "ct-crumbs", "value": 0 }
+        ],
+        "categoryLinks": [
+          { "id": "cl-walker-golem", "targetId": "c-golem", "name": "Golem", "primary": false },
+          { "id": "cl-walker-kettle", "targetId": "c-kettle", "name": "Kettle", "primary": false }
+        ],
+        "profiles": [
+          {
+            "id": "p-walker",
+            "name": "Sugar Bowl Walker",
+            "typeName": "Golem",
+            "characteristics": [
+              { "name": "Stride", "$text": "4\"" },
+              { "name": "Grip", "$text": "5+" }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "r-burst",
+            "name": "Steam Vent Burst",
+            "description": "Works like Steam Vent, but louder."
+          },
+          {
+            "id": "r-sugar-rush",
+            "name": "Sugar Rush",
+            "description": "Hidden from the table.",
+            "hidden": true
+          }
+        ]
+      },
+      {
+        "id": "e-sling",
+        "name": "Saucer Sling",
+        "type": "upgrade",
+        "profiles": [
+          {
+            "id": "p-sling",
+            "name": "Saucer Sling",
+            "typeName": "Gadget",
+            "characteristics": [
+              { "name": "Reach", "$text": "12\"" },
+              { "name": "Traits", "$text": "Glow 2" }
+            ]
+          }
+        ],
+        "infoLinks": [
+          { "id": "il-sling-glow", "name": "Glow 2", "targetId": "r-glow", "type": "rule" }
+        ]
+      }
+    ],
+    "sharedSelectionEntryGroups": [
+      {
+        "id": "g-banquet",
+        "name": "Banquet Cutlery",
+        "selectionEntries": [
+          {
+            "id": "e-fork",
+            "name": "Banquet Fork",
+            "type": "upgrade",
+            "profiles": [
+              {
+                "id": "p-fork",
+                "name": "Banquet Fork",
+                "typeName": "Gadget",
+                "characteristics": [{ "name": "Reach", "$text": "2\"" }]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "g-crumbs",
+        "name": "Crumbs",
+        "selectionEntries": [
+          {
+            "id": "e-crumb",
+            "name": "Crumb",
+            "type": "upgrade",
+            "profiles": [
+              {
+                "id": "p-crumb",
+                "name": "Crumb",
+                "typeName": "Gadget",
+                "characteristics": [{ "name": "Reach", "$text": "3\"" }]
+              }
+            ]
+          }
+        ],
+        "entryLinks": [
+          { "id": "l-crumbs-jam", "name": "Jam", "targetId": "g-jam", "type": "selectionEntryGroup" }
+        ]
+      },
+      {
+        "id": "g-jam",
+        "name": "Jam",
+        "selectionEntries": [
+          {
+            "id": "e-jam-pot",
+            "name": "Jam Pot",
+            "type": "upgrade",
+            "profiles": [
+              {
+                "id": "p-jam-pot",
+                "name": "Jam Pot",
+                "typeName": "Gadget",
+                "characteristics": [{ "name": "Reach", "$text": "6\"" }]
+              }
+            ]
+          }
+        ],
+        "entryLinks": [
+          { "id": "l-jam-crumbs", "name": "Crumbs", "targetId": "g-crumbs", "type": "selectionEntryGroup" }
+        ]
+      }
+    ],
+    "sharedProfiles": [
+      {
+        "id": "p-whistle",
+        "name": "Whistle",
+        "typeName": "Quirk",
+        "characteristics": [
+          { "name": "Note", "$text": "When the kettle whistles, allies with **Steam Vent** gain Glow 2." }
+        ]
+      },
+      {
+        "id": "p-lid",
+        "name": "Lid",
+        "typeName": "Gadget",
+        "characteristics": [{ "name": "Reach", "$text": "1\"" }]
+      }
+    ],
+    "sharedRules": [
+      { "id": "r-glow", "name": "Glow 2", "description": "Shines a little." }
+    ],
+    "sharedInfoGroups": [
+      {
+        "id": "ig-tea-service",
+        "name": "Tea Service",
+        "profiles": [
+          {
+            "id": "p-tray",
+            "name": "Tray",
+            "typeName": "Gadget",
+            "characteristics": [{ "name": "Reach", "$text": "0\"" }]
+          }
+        ],
+        "infoLinks": [
+          { "id": "il-service-lid", "name": "Lid", "targetId": "p-lid", "type": "profile" }
+        ]
+      }
+    ]
+  }
+}

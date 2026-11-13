@@ -1,0 +1,84 @@
+{
+  "catalogue": {
+    "id": "cat-kinds",
+    "catalogueLinks": [
+      { "targetId": "cat-a", "importRootEntries": null },
+      { "targetId": "cat-b" },
+      { "targetId": "cat-c", "importRootEntries": false },
+      { "targetId": "cat-d", "importRootEntries": true }
+    ],
+    "sharedSelectionEntries": [
+      { "id": "e-unit", "name": "A", "type": "unit" },
+      { "id": "e-model", "name": "B", "type": "model" },
+      { "id": "e-upgrade", "name": "C", "type": "upgrade" },
+      { "id": "e-crew", "name": "D", "type": "crew" },
+      {
+        "id": "e-plain",
+        "name": "E",
+        "entryLinks": [
+          { "id": "l-entry", "name": "F", "targetId": "x", "type": "selectionEntry" },
+          { "id": "l-group", "name": "G", "targetId": "x", "type": "selectionEntryGroup" },
+          { "id": "l-other", "name": "H", "targetId": "x", "type": "shortcut" },
+          { "id": "l-plain", "name": "I", "targetId": "x" }
+        ],
+        "modifiers": [
+          { "type": "set", "field": "name", "value": "Renamed" },
+          { "type": "increment", "field": "ct-acorns", "value": 2 },
+          { "type": "decrement", "field": "ct-acorns", "value": 0.5 },
+          { "type": "append", "field": "name", "value": " (old)" },
+          { "type": "add", "field": "category", "value": "c-line" },
+          { "type": "remove", "field": "category", "value": "c-line" },
+          { "type": "multiply", "field": "ct-acorns", "value": 2 },
+          { "field": "hidden", "value": null },
+          {
+            "type": "set",
+            "field": "hidden",
+            "value": true,
+            "conditions": [
+              { "type": "atLeast", "value": 1, "field": "selections", "scope": "self", "childId": "a" },
+              { "type": "atMost", "value": 2.5 },
+              { "type": "greaterThan" },
+              { "type": "lessThan" },
+              { "type": "equalTo" },
+              { "type": "notEqualTo" },
+              { "type": "instanceOf" },
+              { "type": "notInstanceOf" },
+              { "type": "before" },
+              {}
+            ],
+            "conditionGroups": [
+              { "type": "and", "conditionGroups": [{ "type": "or" }] },
+              { "type": "count" },
+              {}
+            ]
+          }
+        ]
+      },
+      {
+        "id": "e-grouped",
+        "name": "J",
+        "modifiers": [{ "type": "add", "field": "category", "value": "c-own" }],
+        "modifierGroups": [
+          {
+            "conditions": [{ "type": "atLeast", "value": 1, "childId": "outer" }],
+            "conditionGroups": [{ "type": "or" }],
+            "modifiers": [
+              {
+                "type": "set",
+                "field": "hidden",
+                "value": true,
+                "conditions": [{ "type": "lessThan", "value": 1, "childId": "own" }]
+              }
+            ],
+            "modifierGroups": [
+              {
+                "conditions": [{ "type": "atMost", "value": 0, "childId": "inner" }],
+                "modifiers": [{ "type": "set", "field": "hidden", "value": false }]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

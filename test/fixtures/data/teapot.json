@@ -1,0 +1,142 @@
+{
+  "catalogue": {
+    "id": "cat-teapot",
+    "name": "Teapot Golems",
+    "library": false,
+    "catalogueLinks": [{ "targetId": "cat-crockery", "importRootEntries": true }],
+    "entryLinks": [
+      { "id": "l-captain", "name": "Kettle Captain", "targetId": "e-captain", "type": "selectionEntry" },
+      { "id": "l-squad", "name": "Teacup Squad", "targetId": "e-squad", "type": "selectionEntry" }
+    ],
+    "sharedSelectionEntries": [
+      {
+        "id": "e-squad",
+        "name": "Teacup Squad",
+        "type": "unit",
+        "costs": [{ "name": "acorns", "typeId": "ct-acorns", "value": 10 }],
+        "categoryLinks": [
+          { "id": "cl-squad-golem", "targetId": "c-golem", "name": "Golem", "primary": false },
+          { "id": "cl-squad-line", "targetId": "c-line", "name": "Line", "primary": true }
+        ],
+        "profiles": [
+          {
+            "id": "p-stacking",
+            "name": "Stacking",
+            "typeName": "Quirk",
+            "characteristics": [{ "name": "Note", "$text": "Cups stack two high." }]
+          },
+          {
+            "id": "p-secret",
+            "name": "Secret Recipe",
+            "typeName": "Quirk",
+            "hidden": true,
+            "characteristics": [{ "name": "Note", "$text": "Not for the table." }]
+          }
+        ],
+        "infoLinks": [
+          { "id": "il-squad-whistle", "name": "Whistle", "targetId": "p-whistle", "type": "profile" },
+          { "id": "il-squad-glow", "name": "Glow 2", "targetId": "r-glow", "type": "rule" },
+          { "id": "il-squad-service", "name": "Tea Service", "targetId": "ig-tea-service", "type": "infoGroup" },
+          { "id": "il-squad-teatime", "name": "Teatime", "targetId": "r-teatime", "type": "rule", "hidden": true }
+        ],
+        "infoGroups": [
+          {
+            "id": "ig-drill",
+            "name": "Drill",
+            "profiles": [
+              {
+                "id": "p-drill",
+                "name": "Stacking Drill",
+                "typeName": "Quirk",
+                "characteristics": [{ "name": "Note", "$text": "Restack after a tumble." }]
+              }
+            ]
+          }
+        ],
+        "selectionEntryGroups": [
+          {
+            "id": "g-cups",
+            "name": "Cups",
+            "selectionEntries": [
+              {
+                "id": "e-teacup",
+                "name": "Teacup",
+                "type": "model",
+                "costs": [{ "name": "acorns", "typeId": "ct-acorns", "value": 5 }],
+                "profiles": [
+                  {
+                    "id": "p-teacup",
+                    "name": "Teacup",
+                    "typeName": "Golem",
+                    "characteristics": [
+                      { "name": "Stride", "$text": "6\"" },
+                      { "name": "Rivets", "$text": null }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "e-sergeant",
+                "name": "Teacup Sergeant",
+                "type": "model",
+                "costs": [{ "name": "acorns", "typeId": "ct-acorns", "value": 20 }],
+                "profiles": [
+                  {
+                    "id": "p-sergeant",
+                    "name": "Teacup Sergeant",
+                    "typeName": "Golem",
+                    "characteristics": [{ "name": "Stride", "$text": "6\"" }]
+                  }
+                ]
+              },
+              {
+                "id": "e-mascot",
+                "name": "Sugar Cube Mascot",
+                "type": "model",
+                "hidden": true,
+                "profiles": [
+                  {
+                    "id": "p-mascot",
+                    "name": "Sugar Cube Mascot",
+                    "typeName": "Golem",
+                    "characteristics": [{ "name": "Stride", "$text": "2\"" }]
+                  }
+                ],
+                "modifiers": [
+                  {
+                    "type": "set",
+                    "field": "hidden",
+                    "value": false,
+                    "conditions": [
+                      { "type": "atLeast", "value": 1, "field": "selections", "scope": "parent", "childId": "e-sergeant" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "entryLinks": [
+          { "id": "l-squad-sling", "name": "Saucer Sling", "targetId": "e-sling", "type": "selectionEntry" },
+          {
+            "id": "l-squad-banquet",
+            "name": "Banquet Cutlery",
+            "targetId": "g-banquet",
+            "type": "selectionEntryGroup",
+            "modifiers": [
+              {
+                "type": "set",
+                "field": "hidden",
+                "value": true,
+                "conditions": [
+                  { "type": "lessThan", "value": 1, "field": "forces", "scope": "roster", "childId": "f-banquet" }
+                ]
+              }
+            ]
+          },
+          { "id": "l-squad-crumbs", "name": "Crumbs", "targetId": "g-crumbs", "type": "selectionEntryGroup" }
+        ]
+      }
+    ]
+  }
+}

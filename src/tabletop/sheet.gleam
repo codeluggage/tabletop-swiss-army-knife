@@ -53,12 +53,12 @@ pub type EntryKind {
 pub fn cost_decoder() -> decode.Decoder(Cost) {
   use name <- decode.optional_field("name", "", decode.string)
   use type_id <- decode.optional_field("typeId", "", decode.string)
-  use value <- decode.optional_field("value", 0.0, number())
+  use value <- decode.optional_field("value", 0.0, number_decoder())
   decode.success(Cost(name:, type_id:, value:))
 }
 
 /// An int or a float, as a float.
-fn number() -> decode.Decoder(Float) {
+pub fn number_decoder() -> decode.Decoder(Float) {
   decode.one_of(decode.float, [decode.int |> decode.map(int.to_float)])
 }
 
