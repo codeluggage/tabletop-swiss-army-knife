@@ -347,6 +347,18 @@ pub fn read_jobs(text: String) -> Result(Failure, Nil) {
   }
 }
 
+/// The body gh printed when `gh api` ran and succeeded. Any other result, gh
+/// missing, not signed in or failing for a reason of its own, is
+/// `Error(Nil)`, and publish asks GitHub directly instead.
+pub fn read_gh(
+  ran: Result(#(Int, String, String), String),
+) -> Result(String, Nil) {
+  case ran {
+    Ok(#(0, body, _)) -> Ok(body)
+    Ok(_) | Error(_) -> Error(Nil)
+  }
+}
+
 // --- The thin layer: processes and requests ---------------------------------
 
 fn publish() -> Promise(Result(Outcome, Stop)) {
@@ -610,14 +622,13 @@ fn api(repository: Repository, path: String) -> String {
 }
 
 /// A GitHub API answer as #(HTTP status, body). It asks through `gh api`,
-/// signed in on this computer, and without a sign-in when gh is missing or
-/// not signed in.
+/// signed in on this computer, and asks GitHub directly, without a sign-in,
+/// when gh fails for any reason. Only an answer that fails then too says that
+/// GitHub did not answer.
 fn ask_github(path: String) -> Promise(Result(#(Int, String), String)) {
-  case run("gh", ["api", path]) {
-    Ok(#(0, body, _)) -> promise.resolve(Ok(#(200, body)))
-    // gh exits 4 when it is not signed in.
-    Ok(#(4, _, _)) | Error(_) -> fetch_text("https://api.github.com/" <> path)
-    Ok(#(_, _, error)) -> promise.resolve(Error(string.trim(error)))
+  case read_gh(run("gh", ["api", path])) {
+    Ok(body) -> promise.resolve(Ok(#(200, body)))
+    Error(Nil) -> fetch_text("https://api.github.com/" <> path)
   }
 }
 

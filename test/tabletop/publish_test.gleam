@@ -128,6 +128,18 @@ pub fn any_other_failure_is_sent_once_more_test() {
   assert publish.retry(None, publish.again) == GiveUp
 }
 
+pub fn any_failure_of_gh_asks_github_directly_test() {
+  assert publish.read_gh(Ok(#(0, "{\"jobs\":[]}", ""))) == Ok("{\"jobs\":[]}")
+  // Not signed in, a token GitHub refuses, an error page, or no gh at all.
+  assert publish.read_gh(Ok(#(4, "", "To get started with GitHub CLI")))
+    == Error(Nil)
+  assert publish.read_gh(Ok(#(1, "", "gh: Bad credentials (HTTP 401)")))
+    == Error(Nil)
+  assert publish.read_gh(Ok(#(1, "{\"message\":\"Not Found\"}", "")))
+    == Error(Nil)
+  assert publish.read_gh(Error("spawnSync gh ENOENT")) == Error(Nil)
+}
+
 pub fn read_push_test() {
   let to = "To github.com:owner/repo.git\n"
   assert publish.read_push(
