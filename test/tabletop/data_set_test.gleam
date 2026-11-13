@@ -46,6 +46,16 @@ type ForceRun {
     pages_ms: Int,
     units: Int,
     checked: List(Checked),
+    /// Entries, groups and links in scope, and how many of them have an
+    /// "Only with" line with more than one name in one requirement.
+    items: Int,
+    either_lines: Int,
+    either_ms: Int,
+    /// The setting values whose node unlocks a group, the children those
+    /// groups list, and how many of the children show an "Only with" line.
+    unlocking_values: Int,
+    unlocked_children: Int,
+    unlocked_with_line: Int,
   )
 }
 
@@ -127,6 +137,28 @@ fn check_force(
   let units = roster.units(force)
   let #(checked, pages_ms) =
     timed(fn() { list.filter_map(units, check_unit(scope, _)) })
+  let ids = list.unique(item_ids(list.flat_map(catalogues, catalogue_nodes)))
+  let #(either_lines, either_ms) =
+    timed(fn() {
+      list.count(ids, fn(id) {
+        case scope.page(scope, id) {
+          Ok(page) -> list.any(page.needs, fn(names) { list.length(names) > 1 })
+          Error(Nil) -> False
+        }
+      })
+    })
+  let unlocked =
+    roster.settings(force)
+    |> list.flat_map(fn(setting) { setting.selections })
+    |> list.filter_map(fn(value) {
+      use id <- result.try(list.last(value.entry_ids))
+      use page <- result.try(scope.page(scope, id))
+      case list.flat_map(page.unlocks, fn(unlock) { unlock.children }) {
+        [] -> Error(Nil)
+        children -> Ok(children)
+      }
+    })
+  let children = list.flatten(unlocked)
   ForceRun(
     scope_files: list.length(files),
     undecoded: list.length(files) - list.length(catalogues),
@@ -135,7 +167,29 @@ fn check_force(
     pages_ms:,
     units: list.length(units),
     checked:,
+    items: list.length(ids),
+    either_lines:,
+    either_ms:,
+    unlocking_values: list.length(unlocked),
+    unlocked_children: list.length(children),
+    unlocked_with_line: list.count(children, fn(child) { child.needs != [] }),
   )
+}
+
+fn catalogue_nodes(file: catalogue.Catalogue) -> List(catalogue.Node) {
+  list.append(file.roots, file.shared)
+}
+
+/// The ids of every entry, group and entry link, at any depth.
+fn item_ids(nodes: List(catalogue.Node)) -> List(String) {
+  list.flat_map(nodes, fn(node) {
+    case node {
+      catalogue.Entry(id:, children:, ..)
+      | catalogue.Group(id:, children:, ..)
+      | catalogue.EntryLink(id:, children:, ..) -> [id, ..item_ids(children)]
+      _ -> []
+    }
+  })
 }
 
 fn check_unit(scope: Scope, unit: roster.Selection) -> Result(Checked, Nil) {
@@ -278,7 +332,19 @@ fn describe(run: Run) -> String {
       <> count(
         list.count(force.checked, fn(checked) { !within_limits(checked) }),
       )
-      <> " units outside the limits"
+      <> " units outside the limits. "
+      <> count(force.items)
+      <> " entries, groups and links, "
+      <> count(force.either_lines)
+      <> " with an only-with line that names more than one in a requirement ("
+      <> count(force.either_ms)
+      <> " ms). "
+      <> count(force.unlocking_values)
+      <> " setting values unlock a group, whose groups list "
+      <> count(force.unlocked_children)
+      <> " children, "
+      <> count(force.unlocked_with_line)
+      <> " of them with an only-with line"
     })
   string.join([import_line, ..force_lines], "\n")
 }
