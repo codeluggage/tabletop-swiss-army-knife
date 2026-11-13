@@ -148,7 +148,7 @@ A test enforces the file half of this rule: `gleam test` fails when a data file 
 
 ### Shipping
 
-`gleam run -m tabletop/publish` is the one way to the live site. A push to `main` runs the type check, the tests and the build in GitHub Actions. Before a deploy, Actions compares the new version with the live site and stops when the new version is not later or the storage schema number is lower. After a deploy, Actions tags the commit with the version. A failed check, test, build or live check publishes nothing. When only the tag fails, the site is already live: publish says so, and the versions command does not list that version.
+`gleam run -m tabletop/publish` is the one way to the live site. A push to `main` runs the type check, the tests and the build in GitHub Actions. Before a deploy, Actions compares the new version with the live site and stops when the new version is not later or the storage schema number is lower. After a deploy, Actions tags the commit with the version. A failed check, test, build or live check publishes nothing. When the type check, the tests or the build fail on GitHub, publish runs them on this computer and says to ask the person who helps with the project. When another step fails, publish sends the same work once more as an empty commit with the message `publish again`, and when that fails too, it says to ask the person who helps with the project. When only the tag fails, the site is already live: publish says so in the line before its last two, and the versions command does not list that version.
 
 ### Working with the person
 
@@ -169,7 +169,8 @@ The person you work for plays tabletop games and is not a developer. They write 
 5. Run `gleam format src test dev`. Commit with a short lowercase message that names nothing from a game.
 6. Run `gleam run -m tabletop/publish`. It checks the code, publishes it, and waits until the site is live.
 7. If publish stops, read its last lines. Fix what they name, commit, and run publish again. If the lines say to ask the person who helps with the project, tell the person exactly that and stop.
-8. Reply with the last two lines that publish printed, and one sentence that says where in the app to look.
+8. If publish was cut off before it printed its last two lines, run `gleam run -m tabletop/publish` again. With nothing new to send, it picks up the wait where it was.
+9. Reply with the last two lines that publish printed, and one sentence that says where in the app to look. When the line before them says to tell the person who helps with the project, say that too.
 
 `gleam run -m tabletop/publish` is the only way you publish. Do not run `git push` yourself.
 
