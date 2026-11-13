@@ -180,12 +180,12 @@ The build stamps a version, `<UTC date>.<UTC time>.<short commit>` such as `2026
 
 - `src/tabletop.gleam` - the shell: flags, the version and the update bar, the service worker, opening storage, the route and scroll, the chosen file and which feature gets it by its kind, the home screen's frame and "About this device", and the wiring of each feature, the list screens' links into game data and their cards included, and the cards on the data set and node screens.
 - `src/tabletop/lists.gleam` - the list feature: its state, messages and effects, importing and deleting lists, and the saved lists, list, unit and rule screens.
-- `src/tabletop/data.gleam` - the game data feature: its state, messages and effects, importing a zip one file at a time, building an older index again, opening a catalogue's scope, deleting a data set, the data set, catalogue and node screens with a place for the cards, and the links and places from a list into the data.
+- `src/tabletop/data.gleam` - the game data feature: its state, messages and effects, importing a zip one file at a time, building an older index again, opening a catalogue's scope, deleting a data set, the data set, catalogue and node screens with a place for the cards, and the links from a list into the data.
 - `src/tabletop/cards.gleam` - the cards feature: its state, messages and effects, the card form, importing cards from a table file, deleting a card, which cards show for a place, a list and a unit, and the card screens and sections.
-- `src/tabletop/table.gleam` - the text of a table file as rows of cells: commas or tabs, quoted cells as in RFC 4180.
+- `src/tabletop/table.gleam` - the text of a table file as rows of cells: tabs, commas, semicolons or pipes, whichever the first line holds most, quoted cells as in RFC 4180.
 - `src/tabletop/effects.gleam` - effects the shell and the features share: a promise's value as a message.
 - `src/tabletop/storage.gleam` + `storage_ffi.mjs` - IndexedDB behind promises of `Result`: JSON and bytes, many writes in one transaction, and the persistent storage request.
-- `src/tabletop/browser.gleam` + `browser_ffi.mjs` - page-level browser calls: the stamped version, `version.json`, the service worker, tab visibility, the clock, history and scroll, random ids, the chosen file's name and bytes.
+- `src/tabletop/browser.gleam` + `browser_ffi.mjs` - page-level browser calls: the stamped version, `version.json`, the service worker, tab visibility, the clock, history and scroll, random ids, the chosen file's name and bytes, and Windows-1252 bytes as text.
 - `src/tabletop/roster.gleam` - the imported list file: its types, the decoder, and the pure functions the list screens use (units, settings, costs, categories, a unit's profiles and rules).
 - `src/tabletop/sheet.gleam` - the shapes a datasheet shows, whichever file they come from (costs, categories, profiles, rules, entry kinds), their decoders, and profile tables.
 - `src/tabletop/text.gleam` - text to segments: `**bold**` runs and names that link to a target each feature picks.
