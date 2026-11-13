@@ -52,3 +52,25 @@ pub fn a_byte_order_mark_is_not_part_of_the_header_test() {
   assert table.parse("\u{FEFF}name\nKettle")
     == Table(header: ["name"], rows: [["Kettle"]])
 }
+
+pub fn semicolons_split_the_cells_test() {
+  assert table.parse("name;effect\nKettle;Pour, then wait")
+    == Table(header: ["name", "effect"], rows: [["Kettle", "Pour, then wait"]])
+}
+
+pub fn pipes_split_the_cells_test() {
+  assert table.parse("name|effect\nKettle|Pour; wait")
+    == Table(header: ["name", "effect"], rows: [["Kettle", "Pour; wait"]])
+}
+
+pub fn the_most_frequent_delimiter_outside_quotes_wins_test() {
+  // Two semicolons outside quotes beat the commas inside them.
+  assert table.parse("\"name, long\";\"cost, short\";when\nKettle;1;now")
+    == Table(header: ["name, long", "cost, short", "when"], rows: [
+      ["Kettle", "1", "now"],
+    ])
+  // A tie goes to tab, then comma, then semicolon, then pipe.
+  assert table.parse("a,b;c\n").header == ["a", "b;c"]
+  assert table.parse("a|b;c\n").header == ["a|b", "c"]
+  assert table.parse("a\tb|c\n").header == ["a", "b|c"]
+}
