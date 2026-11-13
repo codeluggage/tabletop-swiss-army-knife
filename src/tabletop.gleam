@@ -4,7 +4,7 @@
 //// reload when a newer build is out. Each feature keeps its own state,
 //// messages and screens in its own module, and the shell sends it the routes
 //// it owns. The list feature is `tabletop/lists`, the game data feature
-//// `tabletop/data`.
+//// `tabletop/data`, the cards feature `tabletop/cards`.
 
 import gleam/bit_array
 import gleam/bool
@@ -23,6 +23,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import tabletop/browser
+import tabletop/cards
 import tabletop/data
 import tabletop/effects
 import tabletop/lists
@@ -57,6 +58,7 @@ pub type Model {
     file_problem: Option(FileProblem),
     lists: lists.State,
     data: data.State,
+    cards: cards.State,
     /// How far down each screen was when it was left, keyed by its hash.
     scroll: Dict(String, Float),
     update: Update,
@@ -95,6 +97,7 @@ pub type Msg {
   FileRead(Result(#(String, BitArray), String))
   ListsMsg(lists.Msg)
   DataMsg(data.Msg)
+  CardsMsg(cards.Msg)
 }
 
 const first_opened_key = "first_opened"
@@ -110,6 +113,7 @@ pub fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       file_problem: None,
       lists: lists.init(),
       data: data.init(),
+      cards: cards.init(),
       scroll: dict.new(),
       update: UpToDate,
     )
@@ -132,6 +136,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         effects.from_promise(fn() { load_first_opened(db) }, FirstOpenedLoaded),
         lists.load(Ok(db)) |> effect.map(ListsMsg),
         data.load(Ok(db)) |> effect.map(DataMsg),
+        cards.load(Ok(db)) |> effect.map(CardsMsg),
       ]),
     )
     StorageOpened(Error(error)) -> #(
@@ -143,6 +148,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       effect.batch([
         lists.load(Error(error)) |> effect.map(ListsMsg),
         data.load(Error(error)) |> effect.map(DataMsg),
+        cards.load(Error(error)) |> effect.map(CardsMsg),
       ]),
     )
     FirstOpenedLoaded(result) -> #(
@@ -189,6 +195,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           file_problem: None,
           lists: lists.screen_changed(model.lists),
           data: data.screen_changed(model.data),
+          cards: cards.screen_changed(model.cards),
         )
         |> enter_data
       #(model, effect.batch([scroll_to(top), entered]))
@@ -232,6 +239,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         _ -> #(model, done)
       }
     }
+    CardsMsg(msg) ->
+      cards.update(model.cards, msg, model.storage) |> from_cards(model)
   }
 }
 
@@ -255,6 +264,14 @@ fn from_data(
   model: Model,
 ) -> #(Model, Effect(Msg)) {
   #(Model(..model, data: step.0), effect.map(step.1, DataMsg))
+}
+
+/// The cards feature's new state into the model, its effect into the app's.
+fn from_cards(
+  step: #(cards.State, Effect(cards.Msg)),
+  model: Model,
+) -> #(Model, Effect(Msg)) {
+  #(Model(..model, cards: step.0), effect.map(step.1, CardsMsg))
 }
 
 /// The list feature's new state into the model, its effect into the app's.
@@ -339,15 +356,42 @@ pub fn view(model: Model) -> Element(Msg) {
       |> lists_view
     route.RulePage(list_id:, rule_name:) ->
       lists.rule_page(model.lists, list_id, rule_name) |> lists_view
-    route.DataSetPage(set_id:) -> data.set_page(model.data, set_id) |> data_view
+    route.DataSetPage(set_id:) ->
+      data.set_page(
+        model.data,
+        set_id,
+        DataMsg,
+        cards.game_section(model.cards, set_id) |> cards_view,
+      )
     route.CataloguePage(set_id:, catalogue_id:) ->
       data.catalogue_page(model.data, set_id, catalogue_id) |> data_view
     route.NodePage(set_id:, catalogue_id:, node_id:) ->
-      data.node_page(model.data, set_id, catalogue_id, node_id) |> data_view
-    route.CardsPage(..)
-    | route.NewCardPage(..)
-    | route.CardPage(..)
-    | route.ImportCardsPage(..) -> home(model)
+      data.node_page(
+        model.data,
+        set_id,
+        catalogue_id,
+        node_id,
+        fn(built, page, links) {
+          cards.node_sections(
+            model.cards,
+            set_id,
+            catalogue_id,
+            node_id,
+            built,
+            page,
+            links,
+          )
+          |> cards_view
+        },
+      )
+    route.CardsPage(place:) ->
+      cards.place_page(model.cards, place) |> cards_view
+    route.NewCardPage(place:) ->
+      cards.new_card_page(model.cards, place) |> cards_view
+    route.CardPage(card_id:) ->
+      cards.card_page(model.cards, card_id) |> cards_view
+    route.ImportCardsPage(place:) ->
+      cards.import_page(model.cards, place) |> cards_view
   }
   html.main(
     [attribute.class("page")],
@@ -363,15 +407,44 @@ fn data_view(elements: List(Element(data.Msg))) -> List(Element(Msg)) {
   list.map(elements, element.map(_, DataMsg))
 }
 
-/// The list screens' links into game data. The list feature never sees the
-/// data feature.
+fn cards_view(elements: List(Element(cards.Msg))) -> List(Element(Msg)) {
+  list.map(elements, element.map(_, CardsMsg))
+}
+
+/// The list screens' links into game data and their cards. The list feature
+/// never sees the data or cards features.
 fn data_links(model: Model) -> lists.DataLinks {
+  // The cards of a force come from the data set with its catalogue and the
+  // nodes its settings' chosen values link to, each with the value's name.
+  let force_cards = fn(catalogue_id, values, show) {
+    case data.set_of(model.data, catalogue_id) {
+      None -> element.none()
+      Some(set_id) ->
+        show(
+          set_id,
+          list.filter_map(values, fn(value: #(String, List(String))) {
+            case data.value_place(model.data, catalogue_id, value.1) {
+              Some(place) -> Ok(#(place, value.0))
+              None -> Error(Nil)
+            }
+          }),
+        )
+    }
+  }
   lists.DataLinks(
     entry: fn(catalogue_id, entry_ids) {
       data.entry_href(model.data, catalogue_id, entry_ids)
     },
     value: fn(catalogue_id, entry_ids) {
       data.value_href(model.data, catalogue_id, entry_ids)
+    },
+    cards: fn(catalogue_id, values) {
+      use set_id, nodes <- force_cards(catalogue_id, values)
+      cards.list_section(model.cards, set_id, nodes)
+    },
+    unit_cards: fn(catalogue_id, values, keywords) {
+      use set_id, nodes <- force_cards(catalogue_id, values)
+      cards.list_unit_section(model.cards, set_id, nodes, keywords)
     },
   )
 }

@@ -113,6 +113,18 @@ a.button {
   font-size: 1.1rem;
 }
 
+.button.primary {
+  border: 0;
+  background: var(--accent);
+  color: #1d2b36;
+  font-weight: 600;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .button.danger {
   border-color: #b3261e;
   background: #b3261e;
@@ -142,7 +154,8 @@ a.button {
   margin-bottom: 1rem;
 }
 
-.import input:focus-visible + label {
+.import input:focus-visible + label,
+.actions input:focus-visible + label {
   outline: 0.2rem solid var(--ink);
   outline-offset: 0.15rem;
 }
@@ -168,7 +181,9 @@ a.button {
   margin-bottom: 0.25rem;
 }
 
-.field input {
+.field input,
+.field textarea,
+.field select {
   font: inherit;
   width: 100%;
   min-height: 2.75rem;
@@ -177,6 +192,56 @@ a.button {
   border-radius: 0.4rem;
   background: transparent;
   color: inherit;
+}
+
+.field textarea {
+  padding: 0.5rem 0.75rem;
+  resize: vertical;
+}
+
+/* A row of buttons that wraps on a narrow screen. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.delete {
+  margin-top: 1.5rem;
+}
+
+/* Cards: the name, the cost, then each field's text under it. */
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.card {
+  padding: 0.25rem 0 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+}
+
+.card-name {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin: 0;
+}
+
+.card-cost {
+  margin: 0 0 0.25rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.card .prose {
+  margin-top: 0.25rem;
+}
+
+.card-label {
+  font-weight: 600;
 }
 
 .problem {

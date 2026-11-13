@@ -34,7 +34,12 @@ fn saved_list() -> lists.State {
 }
 
 fn links(href: Option(String)) -> lists.DataLinks {
-  lists.DataLinks(entry: fn(_, _) { href }, value: fn(_, _) { href })
+  lists.DataLinks(
+    entry: fn(_, _) { href },
+    value: fn(_, _) { href },
+    cards: fn(_, _) { element.none() },
+    unit_cards: fn(_, _, _) { element.none() },
+  )
 }
 
 fn render(elements: List(element.Element(lists.Msg))) -> String {

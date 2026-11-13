@@ -2,7 +2,8 @@
 //// of data files, deleting a data set, and the data set, catalogue and node
 //// screens. The shell in `tabletop.gleam` holds its `State`, wraps its `Msg`,
 //// hands it a chosen zip through `import_zip`, calls `enter` when the screen
-//// changes and when the data sets have loaded, and sends it the data routes.
+//// changes and when the data sets have loaded, and sends it the data routes
+//// with the cards that go on the data set and node screens.
 ////
 //// A data set is two records under its game system's id: the index, with the
 //// zip's file name and when it was imported, and the zip's bytes, unchanged.
@@ -27,7 +28,7 @@ import tabletop/bytes.{type UnpackError}
 import tabletop/catalogue.{type Catalogue, type Summary}
 import tabletop/data_index.{type Index}
 import tabletop/effects
-import tabletop/route.{type Route}
+import tabletop/route.{type Place, type Route}
 import tabletop/scope.{type CostLine, type Item, type Page, type Scope}
 import tabletop/sheet
 import tabletop/sheet_view
@@ -643,11 +644,28 @@ pub fn value_href(
   catalogue_id: String,
   entry_ids: List(String),
 ) -> Option(String) {
+  value_place(state, catalogue_id, entry_ids)
+  |> option.map(fn(place) { route.to_hash(route.place_page(place)) })
+}
+
+/// The node a setting's chosen value links to, as in `value_href`.
+pub fn value_place(
+  state: State,
+  catalogue_id: String,
+  entry_ids: List(String),
+) -> Option(Place) {
   {
     use set <- result.try(set_with(state, catalogue_id))
     use last <- result.map(list.last(entry_ids))
-    route.to_hash(route.NodePage(set.id, catalogue_id, last))
+    route.Node(set.id, catalogue_id, last)
   }
+  |> option.from_result
+}
+
+/// The id of the loaded data set that has the catalogue.
+pub fn set_of(state: State, catalogue_id: String) -> Option(String) {
+  set_with(state, catalogue_id)
+  |> result.map(fn(set) { set.id })
   |> option.from_result
 }
 
@@ -879,8 +897,8 @@ fn set_row(set: DataSet, confirming: Bool) -> Element(Msg) {
 fn with_set(
   state: State,
   set_id: String,
-  render: fn(DataSet) -> List(Element(Msg)),
-) -> List(Element(Msg)) {
+  render: fn(DataSet) -> List(Element(msg)),
+) -> List(Element(msg)) {
   case state.sets {
     None -> [html.p([attribute.class("note")], [html.text("Opening…")])]
     Some(Error(error)) ->
@@ -902,8 +920,8 @@ fn with_set(
 fn with_catalogue(
   set: DataSet,
   catalogue_id: String,
-  render: fn(data_index.CatalogueSummary) -> List(Element(Msg)),
-) -> List(Element(Msg)) {
+  render: fn(data_index.CatalogueSummary) -> List(Element(msg)),
+) -> List(Element(msg)) {
   case list.find(set.index.catalogues, fn(c) { c.id == catalogue_id }) {
     Ok(catalogue) -> render(catalogue)
     Error(Nil) ->
@@ -915,7 +933,7 @@ fn with_catalogue(
   }
 }
 
-fn gone(back: Route, label: String, message: String) -> List(Element(Msg)) {
+fn gone(back: Route, label: String, message: String) -> List(Element(msg)) {
   [
     sheet_view.back_link(back, label),
     html.p([attribute.class("note")], [html.text(message)]),
@@ -945,8 +963,14 @@ fn text_box(label: String, hash: String, value: String) -> Element(Msg) {
   ])
 }
 
-/// The data set screen: a search over its roots, or its catalogues.
-pub fn set_page(state: State, set_id: String) -> List(Element(Msg)) {
+/// The data set screen: a search over its roots, or its catalogues, then
+/// `cards`. `wrap` makes the search box's messages the caller's.
+pub fn set_page(
+  state: State,
+  set_id: String,
+  wrap: fn(Msg) -> msg,
+  cards: List(Element(msg)),
+) -> List(Element(msg)) {
   use set <- with_set(state, set_id)
   let hash = route.to_hash(route.DataSetPage(set_id))
   let typed = typed_on(state, hash)
@@ -954,15 +978,16 @@ pub fn set_page(state: State, set_id: String) -> List(Element(Msg)) {
   [
     sheet_view.back_link(route.Home, "Home"),
     html.h1([], [html.text(set.index.game_system_name)]),
-    text_box("Search", hash, typed),
+    text_box("Search", hash, typed) |> element.map(wrap),
     case string.length(query) >= 2 {
       True -> hits(set, data_index.search(set.index, query))
       False -> catalogues(set)
     },
+    ..cards
   ]
 }
 
-fn hits(set: DataSet, hits: List(data_index.Hit)) -> Element(Msg) {
+fn hits(set: DataSet, hits: List(data_index.Hit)) -> Element(msg) {
   case hits {
     [] -> html.p([attribute.class("note")], [html.text("Nothing found.")])
     _ ->
@@ -987,7 +1012,7 @@ fn hits(set: DataSet, hits: List(data_index.Hit)) -> Element(Msg) {
 
 /// The game system first, then the other catalogues by name, then the
 /// libraries by name under their own heading.
-fn catalogues(set: DataSet) -> Element(Msg) {
+fn catalogues(set: DataSet) -> Element(msg) {
   let by_name = list.sort(_, fn(a: data_index.CatalogueSummary, b) {
     string.compare(a.name, b.name)
   })
@@ -1020,7 +1045,7 @@ fn catalogues(set: DataSet) -> Element(Msg) {
 
 /// A row that opens a screen: a name, and a line under it for each of
 /// `under` that is not empty.
-fn row(to: Route, name: String, under: List(String)) -> Element(Msg) {
+fn row(to: Route, name: String, under: List(String)) -> Element(msg) {
   html.a([attribute.class("row-link"), attribute.href(route.to_hash(to))], [
     html.span([attribute.class("name")], [html.text(name)]),
     ..under
@@ -1090,13 +1115,15 @@ pub fn catalogue_page(
 }
 
 /// The node screen: the page of the node in its catalogue's scope, once the
-/// scope is built.
+/// scope is built. What `cards` gives for the scope, the page and the rule
+/// links goes after the rules.
 pub fn node_page(
   state: State,
   set_id: String,
   catalogue_id: String,
   node_id: String,
-) -> List(Element(Msg)) {
+  cards: fn(Scope, Page, text.Links(String)) -> List(Element(msg)),
+) -> List(Element(msg)) {
   use set <- with_set(state, set_id)
   use catalogue <- with_catalogue(set, catalogue_id)
   let to_catalogue = route.CataloguePage(set_id, catalogue_id)
@@ -1109,7 +1136,15 @@ pub fn node_page(
       if open.set_id == set_id && open.catalogue_id == catalogue_id
     ->
       case scope.page(built, node_id) {
-        Ok(page) -> node_view(page, links, set_id, catalogue_id, back)
+        Ok(page) ->
+          node_view(
+            page,
+            links,
+            set_id,
+            catalogue_id,
+            back,
+            cards(built, page, links),
+          )
         Error(Nil) -> note("This entry is not in this catalogue.")
       }
     Some(Open(scope: Decoding(left:, total:), zip: Some(_), ..) as open)
@@ -1132,8 +1167,9 @@ fn node_view(
   links: text.Links(String),
   set_id: String,
   catalogue_id: String,
-  to_catalogue: Element(Msg),
-) -> List(Element(Msg)) {
+  to_catalogue: Element(msg),
+  cards: List(Element(msg)),
+) -> List(Element(msg)) {
   let node_route = route.NodePage(set_id, catalogue_id, _)
   let href = fn(id) { route.to_hash(node_route(id)) }
   let show_text = sheet_view.rich_text(_, links, href)
@@ -1205,6 +1241,9 @@ fn node_view(
         "More rules",
         list.map(page.linked_rules, fn(rule) { #(rule.name, href(rule.id)) }),
       ),
+    ],
+    cards,
+    [
       chips(
         "Keywords",
         list.map(page.keywords, fn(keyword) { #(keyword.1, href(keyword.0)) }),
@@ -1261,7 +1300,7 @@ fn node_view(
 
 const max_unlocks = 100
 
-fn cost_lines(lines: List(CostLine)) -> Element(Msg) {
+fn cost_lines(lines: List(CostLine)) -> Element(msg) {
   case lines {
     [] -> element.none()
     _ ->
@@ -1276,7 +1315,7 @@ fn cost_lines(lines: List(CostLine)) -> Element(Msg) {
 
 /// Names that open a screen, as chips under a heading. Nothing when there are
 /// none.
-fn chips(title: String, links: List(#(String, String))) -> Element(Msg) {
+fn chips(title: String, links: List(#(String, String))) -> Element(msg) {
   case links {
     [] -> element.none()
     _ ->
@@ -1296,9 +1335,9 @@ fn chips(title: String, links: List(#(String, String))) -> Element(Msg) {
 /// Nothing when there are no rows.
 fn rows_section(
   title: String,
-  rows: List(Element(Msg)),
+  rows: List(Element(msg)),
   more: Int,
-) -> Element(Msg) {
+) -> Element(msg) {
   case rows {
     [] -> element.none()
     _ ->
@@ -1320,7 +1359,7 @@ fn item_row(
   node_route: fn(String) -> Route,
   item: Item,
   under: List(String),
-) -> Element(Msg) {
+) -> Element(msg) {
   html.li([], [item_link(node_route, item, under)])
 }
 
@@ -1328,7 +1367,7 @@ fn item_row(
 fn conditional_row(
   node_route: fn(String) -> Route,
   conditional: scope.Conditional,
-) -> Element(Msg) {
+) -> Element(msg) {
   item_row(node_route, conditional.item, [only_with(conditional.needs)])
 }
 
@@ -1337,6 +1376,6 @@ fn item_link(
   node_route: fn(String) -> Route,
   item: Item,
   under: List(String),
-) -> Element(Msg) {
+) -> Element(msg) {
   row(node_route(item.id), item.name, [sheet.format_costs(item.costs), ..under])
 }

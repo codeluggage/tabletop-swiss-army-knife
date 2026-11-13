@@ -17,6 +17,7 @@ import tabletop/data_index
 import tabletop/route
 import tabletop/scope.{All, CostCondition, CostLine, Grouped}
 import tabletop/storage
+import tabletop/text
 import tabletop/zip_writer.{Deflate, File, Store}
 
 const names = ["crockery", "pantry", "picnic-system", "teapot"]
@@ -69,6 +70,14 @@ fn loaded() -> State {
 fn step(state: State, msg: data.Msg) -> State {
   let #(state, _) = data.update(state, msg, None)
   state
+}
+
+fn no_cards(
+  _: scope.Scope,
+  _: scope.Page,
+  _: text.Links(String),
+) -> List(element.Element(data.Msg)) {
+  []
 }
 
 fn render(elements: List(element.Element(data.Msg))) -> String {
@@ -215,14 +224,40 @@ pub fn a_node_screen_builds_its_scope_one_file_at_a_time_test() {
   let assert Some(open) = state.open
   let assert Built(..) = open.scope
   assert string.contains(
-    render(data.node_page(state, "sys-picnic", "cat-teapot", "l-captain")),
+    render(data.node_page(
+      state,
+      "sys-picnic",
+      "cat-teapot",
+      "l-captain",
+      no_cards,
+    )),
     "Kettle Captain",
   )
   // A node hidden by default says what it needs under its title.
   assert string.contains(
-    render(data.node_page(state, "sys-picnic", "cat-teapot", "e-mascot")),
+    render(data.node_page(
+      state,
+      "sys-picnic",
+      "cat-teapot",
+      "e-mascot",
+      no_cards,
+    )),
     "Only with Teacup Sergeant",
   )
+  // The cards go after the rules, before the keywords.
+  let page =
+    render(
+      data.node_page(
+        state,
+        "sys-picnic",
+        "cat-teapot",
+        "l-captain",
+        fn(_, _, _) { [html.p([], [html.text("The cards")])] },
+      ),
+    )
+  let assert [before, after] = string.split(page, "<p>The cards</p>")
+  assert string.contains(before, "<h2>Rules</h2>")
+  assert string.contains(after, "<h2>Keywords</h2>")
   // A second node in the same catalogue starts nothing.
   let other = route.NodePage("sys-picnic", "cat-teapot", "l-squad")
   let #(again, _) = data.enter(state, other, None)
@@ -247,7 +282,13 @@ pub fn a_file_that_does_not_decode_is_named_on_the_node_screen_test() {
       ScopeFileUnpacked("sys-picnic", file("pantry"), Ok(<<"{":utf8>>)),
     )
   let page =
-    render(data.node_page(state, "sys-picnic", "cat-pantry", "l-walker"))
+    render(data.node_page(
+      state,
+      "sys-picnic",
+      "cat-pantry",
+      "l-walker",
+      no_cards,
+    ))
   assert string.contains(page, "picnic/pantry.json")
   // The catalogue screen keeps working.
   let catalogue = render(data.catalogue_page(state, "sys-picnic", "cat-pantry"))
@@ -261,12 +302,12 @@ pub fn the_search_box_keeps_its_text_per_screen_test() {
   let state = step(loaded(), BoxTyped(hash, "k"))
   assert state.typed == Typed(on: hash, text: "k")
   // Under two characters, the catalogues show.
-  let page = render(data.set_page(state, "sys-picnic"))
+  let page = render(data.set_page(state, "sys-picnic", fn(msg) { msg }, []))
   assert string.contains(page, "Libraries")
   assert !string.contains(page, "Kettle Captain")
   // From two, the hits do.
   let state = step(state, BoxTyped(hash, "ke"))
-  let page = render(data.set_page(state, "sys-picnic"))
+  let page = render(data.set_page(state, "sys-picnic", fn(msg) { msg }, []))
   assert string.contains(page, "Kettle Captain")
   assert !string.contains(page, "Libraries")
   // The text stays on its own screen.

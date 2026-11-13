@@ -2,7 +2,7 @@
 //// deleting a list, and the list, unit and rule screens. The shell in
 //// `tabletop.gleam` holds its `State`, wraps its `Msg`, reads a chosen file
 //// and hands its text to `import_file`, sends it the list routes, and hands
-//// the list screens their links into game data.
+//// the list screens their links into game data and their cards.
 
 import gleam/dynamic/decode
 import gleam/int
@@ -49,14 +49,20 @@ pub type Problem {
   NoStorage
 }
 
-/// Links from a list into game data, which the shell makes. Each takes a
-/// force's catalogue id and a selection's entry ids, and gives a link or
-/// nothing: `entry` for a unit or a setting, `value` for a setting's chosen
-/// value.
+/// Links from a list into game data, and the cards that go with it, which
+/// the shell makes. `entry` and `value` take a force's catalogue id and a
+/// selection's entry ids, and give a link or nothing: `entry` for a unit or a
+/// setting, `value` for a setting's chosen value. `cards` takes a force's
+/// catalogue id and its settings' chosen values, each a name and entry ids,
+/// and gives the force's cards. `unit_cards` takes the same and a unit's
+/// keywords, and gives the cards for that unit.
 pub type DataLinks {
   DataLinks(
     entry: fn(String, List(String)) -> Option(String),
     value: fn(String, List(String)) -> Option(String),
+    cards: fn(String, List(#(String, List(String)))) -> Element(Msg),
+    unit_cards: fn(String, List(#(String, List(String))), List(String)) ->
+      Element(Msg),
   )
 }
 
@@ -436,7 +442,20 @@ fn force_section(
         ),
       ])
     })
-  html.section([attribute.class("force")], [title, settings, rules, ..units])
+  html.section([attribute.class("force")], [
+    title,
+    settings,
+    links.cards(force.catalogue_id, chosen_values(force)),
+    rules,
+    ..units
+  ])
+}
+
+/// Each chosen value of the force's settings, as its name and entry ids.
+fn chosen_values(force: roster.Force) -> List(#(String, List(String))) {
+  roster.settings(force)
+  |> list.flat_map(fn(setting) { setting.selections })
+  |> list.map(fn(value) { #(value.name, value.entry_ids) })
 }
 
 fn unit_row(list_id: String, unit: Selection) -> Element(Msg) {
@@ -469,12 +488,13 @@ pub fn unit_page(
       let href = rule_href(saved.id, _)
       let text = sheet_view.rich_text(_, rule_links(decoded), href)
       let keywords = list.map(unit.categories, fn(category) { category.name })
-      let catalogue_id =
+      let force =
         list.find(decoded.forces, fn(force) {
           list.any(roster.units(force), fn(other) { other.id == unit_id })
         })
-        |> result.map(fn(force) { force.catalogue_id })
-        |> result.unwrap("")
+      let catalogue_id =
+        result.map(force, fn(force) { force.catalogue_id }) |> result.unwrap("")
+      let values = result.map(force, chosen_values) |> result.unwrap([])
       list.flatten([
         [
           sheet_view.back_link(route.ListPage(saved.id), title(saved)),
@@ -510,6 +530,7 @@ pub fn unit_page(
                 ]),
               ])
           },
+          links.unit_cards(catalogue_id, values, keywords),
           case unit.selections {
             [] -> element.none()
             children ->
