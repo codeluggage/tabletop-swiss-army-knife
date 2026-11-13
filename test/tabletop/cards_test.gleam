@@ -176,7 +176,7 @@ pub fn rows_with_no_name_are_skipped_test() {
 
 pub fn an_import_is_one_write_of_every_card_test() {
   let #(imported, _) = cards.import_cards(pending(), fn() { "id" })
-  let writes = cards.writes(imported)
+  let writes = cards.writes(imported, [])
   assert list.length(writes) == 3
   assert list.all(writes, fn(write) {
     case write {
@@ -184,6 +184,68 @@ pub fn an_import_is_one_write_of_every_card_test() {
       _ -> False
     }
   })
+}
+
+pub fn only_the_rows_with_a_value_import_test() {
+  let state = cards.State(..cards.init(), pending: Some(pending()))
+  let step = fn(state, msg) { cards.update(state, msg, None).0 }
+  // The When column starts at its first value.
+  let state = step(state, cards.OnlyColumnChosen(Some(2)))
+  let assert Some(pending) = state.pending
+  assert pending.only == Some(#(2, "Your turn, after moving"))
+  assert cards.values(pending.table, 2)
+    == ["Your turn, after moving", "Any time", "Never", "End of turn"]
+  let state = step(state, cards.OnlyValueChosen("Any time"))
+  let assert Some(pending) = state.pending
+  let #(imported, skipped) = cards.import_cards(pending, fn() { "id" })
+  assert list.map(imported, fn(card) { card.name }) == ["Lid Down"]
+  assert skipped == 0
+  // The preview and the count follow.
+  let page = render(cards.import_page(state, pending.place))
+  assert string.contains(page, "Import 1 card<")
+  assert !string.contains(page, "Second Pour")
+  assert !string.contains(page, "will be skipped")
+  // Every row again.
+  let state = step(state, cards.OnlyColumnChosen(None))
+  let assert Some(pending) = state.pending
+  assert cards.import_cards(pending, fn() { "id" }).0 |> list.length == 3
+}
+
+pub fn replace_deletes_the_cards_of_the_place_in_the_same_write_test() {
+  let place = pending().place
+  let other_catalogue = Node("sys-picnic", "cat-pantry", "e-squad")
+  let saved = [
+    card("c1", "Old One", "", place),
+    card("c2", "Old Two", "", other_catalogue),
+    card("c3", "Elsewhere", "", Game("sys-picnic")),
+  ]
+  let state = cards.State(..loaded(saved), pending: Some(pending()))
+  // Off by default: nothing is deleted.
+  let assert Some(off) = state.pending
+  assert off.replace == False
+  assert cards.replaced(saved, off) == []
+  assert !string.contains(render(cards.import_page(state, place)), "deleted")
+  // On: the place's cards, from any catalogue, go in the import's write.
+  let #(state, _) = cards.update(state, cards.ReplaceChecked(True), None)
+  let assert Some(on) = state.pending
+  let removed = cards.replaced(saved, on)
+  assert removed == ["c1", "c2"]
+  assert string.contains(
+    render(cards.import_page(state, place)),
+    "2 cards already here will be deleted.",
+  )
+  let #(imported, _) = cards.import_cards(on, fn() { "new" })
+  let assert [
+    storage.Remove(store: storage.Cards, key: "c1"),
+    storage.Remove(store: storage.Cards, key: "c2"),
+    ..puts
+  ] = cards.writes(imported, removed)
+  assert list.length(puts) == 3
+  // Once saved, the deleted cards are gone and the rest stay.
+  let #(state, _) =
+    cards.update(state, cards.CardsSaved(removed, Ok(imported)), None)
+  let assert [_, _, elsewhere] = saved
+  assert state.cards == Some(Ok(list.append(imported, [elsewhere])))
 }
 
 /// The table a file of `bytes` opens on the import screen.

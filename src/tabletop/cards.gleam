@@ -6,6 +6,7 @@
 //// the card routes, and puts its sections on the data and list screens.
 
 import gleam/bit_array
+import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
@@ -67,6 +68,11 @@ pub type Pending {
     file_name: String,
     table: Table,
     columns: Dict(Field, Int),
+    /// A column and a value: only the rows whose cell in that column is the
+    /// value import. `None` imports every row.
+    only: Option(#(Int, String)),
+    /// Whether the import deletes the cards already at `place`.
+    replace: Bool,
   )
 }
 
@@ -96,7 +102,8 @@ pub type Msg {
     place: Place,
     fields: List(#(String, String)),
   )
-  CardsSaved(Result(List(Card), StorageError))
+  /// `removed` are the ids of the cards the same write deleted.
+  CardsSaved(removed: List(String), result: Result(List(Card), StorageError))
   DeleteClicked(id: String)
   DeleteCancelled
   DeleteConfirmed(id: String)
@@ -104,6 +111,9 @@ pub type Msg {
   TableChosen(place: Place, input: Dynamic)
   TableRead(place: Place, result: Result(#(String, BitArray), String))
   ColumnChosen(field: Field, column: Option(Int))
+  OnlyColumnChosen(column: Option(Int))
+  OnlyValueChosen(value: String)
+  ReplaceChecked(replace: Bool)
   ImportClicked
   Cancelled
 }
@@ -156,14 +166,17 @@ pub fn update(
           }
           #(
             State(..state, problem: None),
-            effects.from_promise(fn() { save(db, [card()]) }, CardsSaved),
+            effects.from_promise(fn() { save(db, [card()], []) }, CardsSaved(
+              [],
+              _,
+            )),
           )
         }
         _, _ -> #(State(..state, problem: Some(NoStorage)), effect.none())
       }
     }
-    CardsSaved(Ok(saved)) -> {
-      let ids = list.map(saved, fn(card) { card.id })
+    CardsSaved(removed:, result: Ok(saved)) -> {
+      let ids = list.append(list.map(saved, fn(card) { card.id }), removed)
       let kept =
         list.filter(saved_cards(state), fn(card) {
           !list.contains(ids, card.id)
@@ -178,7 +191,7 @@ pub fn update(
         back(),
       )
     }
-    CardsSaved(Error(error)) -> #(
+    CardsSaved(result: Error(error), ..) -> #(
       State(..state, problem: Some(NotSaved(error))),
       effect.none(),
     )
@@ -233,7 +246,14 @@ pub fn update(
         )
         read -> {
           let pending =
-            Pending(place:, file_name:, table: read, columns: columns(read))
+            Pending(
+              place:,
+              file_name:,
+              table: read,
+              columns: columns(read),
+              only: None,
+              replace: False,
+            )
           #(State(..state, pending: Some(pending)), {
             use _ <- effect.from
             route.go(route.ImportCardsPage(place))
@@ -241,29 +261,49 @@ pub fn update(
         }
       }
     }
-    ColumnChosen(field:, column:) ->
-      case state.pending {
-        Some(pending) -> {
-          let columns = case column {
-            Some(column) -> dict.insert(pending.columns, field, column)
-            None -> dict.delete(pending.columns, field)
-          }
-          #(
-            State(..state, pending: Some(Pending(..pending, columns:))),
-            effect.none(),
-          )
-        }
-        None -> #(state, effect.none())
+    ColumnChosen(field:, column:) -> {
+      use pending <- change_pending(state)
+      let columns = case column {
+        Some(column) -> dict.insert(pending.columns, field, column)
+        None -> dict.delete(pending.columns, field)
       }
+      Pending(..pending, columns:)
+    }
+    // A new column starts at its first value.
+    OnlyColumnChosen(column:) -> {
+      use pending <- change_pending(state)
+      let only =
+        option.map(column, fn(column) {
+          #(
+            column,
+            values(pending.table, column) |> list.first |> result.unwrap(""),
+          )
+        })
+      Pending(..pending, only:)
+    }
+    OnlyValueChosen(value:) -> {
+      use pending <- change_pending(state)
+      let only = option.map(pending.only, fn(only) { #(only.0, value) })
+      Pending(..pending, only:)
+    }
+    ReplaceChecked(replace:) -> {
+      use pending <- change_pending(state)
+      Pending(..pending, replace:)
+    }
     ImportClicked ->
       case state.pending, db {
-        Some(pending), Some(Ok(db)) -> #(
-          State(..state, problem: None),
-          effects.from_promise(
-            fn() { save(db, import_cards(pending, browser.random_id).0) },
-            CardsSaved,
-          ),
-        )
+        Some(pending), Some(Ok(db)) -> {
+          let removed = replaced(saved_cards(state), pending)
+          #(
+            State(..state, problem: None),
+            effects.from_promise(
+              fn() {
+                save(db, import_cards(pending, browser.random_id).0, removed)
+              },
+              CardsSaved(removed, _),
+            ),
+          )
+        }
         Some(_), _ -> #(State(..state, problem: Some(NoStorage)), effect.none())
         None, _ -> #(state, effect.none())
       }
@@ -275,6 +315,14 @@ pub fn update(
 /// file waiting for the import screen stays, since that screen opens next.
 pub fn screen_changed(state: State) -> State {
   State(..state, problem: None, confirming: None)
+}
+
+/// The file waiting for the import screen, changed by `change`.
+fn change_pending(
+  state: State,
+  change: fn(Pending) -> Pending,
+) -> #(State, Effect(Msg)) {
+  #(State(..state, pending: option.map(state.pending, change)), effect.none())
 }
 
 fn back() -> Effect(Msg) {
@@ -321,19 +369,37 @@ pub fn columns(read: Table) -> Dict(Field, Int) {
   })
 }
 
+/// The cell of `row` in the column `index`, trimmed, and empty when the row
+/// has none.
+fn cell(row: List(String), index: Int) -> String {
+  list.drop(row, index) |> list.first |> result.unwrap("") |> string.trim
+}
+
+/// Each value the column `index` holds, once, in the order of the rows.
+pub fn values(read: Table, index: Int) -> List(String) {
+  list.map(read.rows, cell(_, index)) |> list.unique
+}
+
 /// The cards the rows of an import become, each with an id from `new_id`,
-/// and how many rows are skipped for having no name.
+/// and how many rows are skipped for having no name. With `only`, the other
+/// rows are left out first.
 pub fn import_cards(
   pending: Pending,
   new_id: fn() -> String,
 ) -> #(List(Card), Int) {
+  let rows =
+    list.filter(pending.table.rows, fn(row) {
+      case pending.only {
+        Some(#(index, value)) -> cell(row, index) == value
+        None -> True
+      }
+    })
   let cards =
-    list.filter_map(pending.table.rows, fn(row) {
+    list.filter_map(rows, fn(row) {
       let value = fn(field) {
         dict.get(pending.columns, field)
-        |> result.try(fn(index) { list.drop(row, index) |> list.first })
+        |> result.map(cell(row, _))
         |> result.unwrap("")
-        |> string.trim
       }
       case value(Name) {
         "" -> Error(Nil)
@@ -350,25 +416,43 @@ pub fn import_cards(
           ))
       }
     })
-  #(cards, list.length(pending.table.rows) - list.length(cards))
+  #(cards, list.length(rows) - list.length(cards))
+}
+
+/// The ids of the saved `cards` an import deletes: the cards of its place
+/// when Replace is on, and none when it is off.
+pub fn replaced(cards: List(Card), pending: Pending) -> List(String) {
+  use <- bool.guard(!pending.replace, [])
+  use card <- list.filter_map(cards)
+  case belongs(card.place, pending.place) {
+    True -> Ok(card.id)
+    False -> Error(Nil)
+  }
 }
 
 // --- Storage ----------------------------------------------------------------
 
-/// The changes that save `cards`, all of them in one `storage.write`.
-pub fn writes(cards: List(Card)) -> List(storage.Write) {
-  use card <- list.map(cards)
-  storage.Put(storage.Cards, card.id, storage.JsonValue(encode(card)))
+/// The changes that delete the cards `removed` and save `cards`, all of them
+/// in one `storage.write`.
+pub fn writes(cards: List(Card), removed: List(String)) -> List(storage.Write) {
+  list.append(
+    list.map(removed, storage.Remove(storage.Cards, _)),
+    list.map(cards, fn(card) {
+      storage.Put(storage.Cards, card.id, storage.JsonValue(encode(card)))
+    }),
+  )
 }
 
 /// Every save stamps the cards with the clock.
 fn save(
   db: Database,
   cards: List(Card),
+  removed: List(String),
 ) -> Promise(Result(List(Card), StorageError)) {
   let edited = browser.now_ms()
   let cards = list.map(cards, fn(card) { Card(..card, edited:) })
-  storage.write(db, writes(cards)) |> promise.map(result.replace(_, cards))
+  storage.write(db, writes(cards, removed))
+  |> promise.map(result.replace(_, cards))
 }
 
 fn encode(card: Card) -> json.Json {
@@ -940,11 +1024,49 @@ pub fn import_page(state: State, place: Place) -> List(Element(Msg)) {
         html.h1([], [html.text("Import cards")]),
         note(pending.file_name <> ": " <> count(rows, "row", "rows")),
         ..list.flatten([
-          list.map(fields, column_select(pending, _)),
+          list.map(fields, fn(field) {
+            column_select(
+              pending.table,
+              "column-" <> key(field),
+              label(field),
+              "(none)",
+              dict.get(pending.columns, field) |> option.from_result,
+              ColumnChosen(field, _),
+            )
+          }),
           [
             case dict.has_key(pending.columns, Name) {
               True -> element.none()
               False -> note("Choose the column that holds the name.")
+            },
+            column_select(
+              pending.table,
+              "only-column",
+              "Only rows where",
+              "(every row)",
+              option.map(pending.only, fn(only) { only.0 }),
+              OnlyColumnChosen,
+            ),
+            case pending.only {
+              Some(#(column, value)) ->
+                value_select(pending.table, column, value)
+              None -> element.none()
+            },
+            html.label([attribute.class("check")], [
+              html.input([
+                attribute.type_("checkbox"),
+                attribute.checked(pending.replace),
+                event.on_check(ReplaceChecked),
+              ]),
+              html.text("Replace the cards already here"),
+            ]),
+            case replaced(saved_cards(state), pending) {
+              [] -> element.none()
+              ids ->
+                note(
+                  count(list.length(ids), "card", "cards")
+                  <> " already here will be deleted.",
+                )
             },
             case cards {
               [] -> element.none()
@@ -998,39 +1120,71 @@ pub fn import_page(state: State, place: Place) -> List(Element(Msg)) {
   }
 }
 
-fn column_select(pending: Pending, field: Field) -> Element(Msg) {
-  let field_id = "column-" <> key(field)
-  let chosen = dict.get(pending.columns, field) |> option.from_result
+/// A select of the table's columns under `title`, `none` first for no
+/// column.
+fn column_select(
+  read: Table,
+  id: String,
+  title: String,
+  none: String,
+  chosen: Option(Int),
+  to_msg: fn(Option(Int)) -> Msg,
+) -> Element(Msg) {
   html.div([attribute.class("field")], [
-    html.label([attribute.for(field_id)], [html.text(label(field))]),
+    html.label([attribute.for(id)], [html.text(title)]),
     html.select(
       [
-        attribute.id(field_id),
+        attribute.id(id),
         event.on_change(fn(value) {
-          ColumnChosen(field, int.parse(value) |> option.from_result)
+          to_msg(int.parse(value) |> option.from_result)
         }),
       ],
       [
         html.option(
           [attribute.value(""), attribute.selected(chosen == None)],
-          "(none)",
+          none,
         ),
-        ..list.index_map(pending.table.header, fn(header, index) {
-          let name = case string.trim(header) {
-            "" -> "Column " <> int.to_string(index + 1)
-            name -> name
-          }
+        ..list.index_map(read.header, fn(_, index) {
           html.option(
             [
               attribute.value(int.to_string(index)),
               attribute.selected(chosen == Some(index)),
             ],
-            name,
+            header_name(read, index),
           )
         })
       ],
     ),
   ])
+}
+
+/// A select of the values the column `index` holds, for "Only rows where".
+fn value_select(read: Table, index: Int, chosen: String) -> Element(Msg) {
+  html.div([attribute.class("field")], [
+    html.label([attribute.for("only-value")], [
+      html.text(header_name(read, index) <> " is"),
+    ]),
+    html.select(
+      [attribute.id("only-value"), event.on_change(OnlyValueChosen)],
+      list.map(values(read, index), fn(value) {
+        html.option(
+          [attribute.value(value), attribute.selected(value == chosen)],
+          case value {
+            "" -> "(empty)"
+            _ -> value
+          },
+        )
+      }),
+    ),
+  ])
+}
+
+/// The header of the column `index`, or its number when the header is blank.
+fn header_name(read: Table, index: Int) -> String {
+  case cell(read.header, index) {
+    "" -> "Column " <> int.to_string(index + 1)
+    name -> name
+  }
 }
 
 fn count(number: Int, one: String, many: String) -> String {
