@@ -1,105 +1,96 @@
-//// The build version: when a build was made (UTC) and from which commit.
-////
-//// Written as `2026-11-12.204107.abc1234`: the UTC date, the UTC time of the
-//// build to the second, and the short git commit. The time keeps two builds of
-//// the same commit apart, so a rebuilt site still reaches the browser.
+//// The version a person can say: the minute a build was made, as
+//// `2026.11.13.1542`, the year, month, day, hour and minute on one clock the
+//// build picks. Always 15 characters, so the text sorts in time order.
 
 import gleam/dynamic/decode
 import gleam/json
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/order
 import gleam/result
 import gleam/string
 
 pub opaque type Version {
-  Version(date: String, time: String, commit: String)
+  Version(text: String)
 }
 
-pub type VersionError {
-  NotThreeParts
-  BadDate
-  BadTime
-  BadCommit
-  NotVersionJson
+/// What `version.json` says about a build.
+pub type Stamp {
+  Stamp(release: Version, commit: String, schema: Int)
 }
 
-pub fn parse(text: String) -> Result(Version, VersionError) {
+pub fn parse(text: String) -> Result(Version, Nil) {
   case string.split(text, ".") {
-    [date, time, commit] -> {
-      use date <- result.try(parse_date(date))
-      use time <- result.try(parse_time(time))
-      use commit <- result.try(parse_commit(commit))
-      Ok(Version(date:, time:, commit:))
-    }
-    _ -> Error(NotThreeParts)
+    [year, month, day, time] ->
+      case
+        digits(year, 4) && digits(month, 2) && digits(day, 2) && digits(time, 4)
+      {
+        True -> Ok(Version(text))
+        False -> Error(Nil)
+      }
+    _ -> Error(Nil)
   }
-}
-
-/// The version for a build made at `iso` (as `Date.toISOString` writes it,
-/// `2026-11-12T20:41:07.123Z`) from the commit `commit`.
-pub fn from_build(
-  iso: String,
-  commit: String,
-) -> Result(Version, VersionError) {
-  let date = string.slice(iso, 0, 10)
-  let time = string.slice(iso, 11, 8) |> string.replace(":", "")
-  parse(date <> "." <> time <> "." <> commit)
 }
 
 pub fn to_string(version: Version) -> String {
-  version.date <> "." <> version.time <> "." <> version.commit
+  version.text
 }
 
-/// True when `candidate` was built after `running`. An older or equal build
-/// is never offered as an update, which keeps a stale copy of `version.json`
-/// from a slow cache from prompting a reload.
+/// True when `candidate` was built in a later minute than `running`. An older
+/// or equal build is never offered as an update, which keeps a stale copy of
+/// `version.json` from a slow cache from prompting a reload.
 pub fn is_newer(candidate: Version, than running: Version) -> Bool {
-  string.compare(candidate.date <> candidate.time, running.date <> running.time)
-  == order.Gt
+  string.compare(candidate.text, running.text) == order.Gt
 }
 
-/// The contents of `version.json`.
-pub fn to_json(version: Version) -> String {
-  json.object([#("version", json.string(to_string(version)))])
+/// The contents of `version.json`. `legacy` is the `version` key in the shape
+/// apps from before releases read; the build makes it.
+pub fn to_json(stamp: Stamp, legacy legacy: String) -> String {
+  json.object([
+    #("release", json.string(stamp.release.text)),
+    #("commit", json.string(stamp.commit)),
+    #("schema", json.int(stamp.schema)),
+    #("version", json.string(legacy)),
+  ])
   |> json.to_string
 }
 
-pub fn from_json(text: String) -> Result(Version, VersionError) {
+/// The release a `version.json` names. The app reads only this key.
+pub fn from_json(text: String) -> Result(Version, Nil) {
   let decoder = {
-    use version <- decode.field("version", decode.string)
-    decode.success(version)
+    use release <- decode.field("release", decode.string)
+    decode.success(release)
   }
-  case json.parse(text, decoder) {
-    Ok(version) -> parse(version)
-    Error(_) -> Error(NotVersionJson)
-  }
+  json.parse(text, decoder) |> result.replace_error(Nil) |> result.try(parse)
 }
 
-fn parse_date(text: String) -> Result(String, VersionError) {
-  case string.split(text, "-") {
-    [year, month, day] ->
-      case digits(year, 4) && digits(month, 2) && digits(day, 2) {
-        True -> Ok(text)
-        False -> Error(BadDate)
+/// Everything a `version.json` says. `Ok(None)` for a JSON object with no
+/// `release` key, as a site built before releases writes it.
+pub fn stamp_from_json(text: String) -> Result(Option(Stamp), Nil) {
+  let decoder = {
+    use release <- decode.optional_field(
+      "release",
+      None,
+      decode.map(decode.string, Some),
+    )
+    case release {
+      None -> decode.success(None)
+      Some(release) -> {
+        use commit <- decode.field("commit", decode.string)
+        use schema <- decode.field("schema", decode.int)
+        decode.success(Some(#(release, commit, schema)))
       }
-    _ -> Error(BadDate)
+    }
   }
-}
-
-fn parse_time(text: String) -> Result(String, VersionError) {
-  case digits(text, 6) {
-    True -> Ok(text)
-    False -> Error(BadTime)
-  }
-}
-
-fn parse_commit(text: String) -> Result(String, VersionError) {
-  let allowed = fn(grapheme) {
-    string.contains("0123456789abcdefghijklmnopqrstuvwxyz", grapheme)
-  }
-  case text != "" && list.all(string.to_graphemes(text), allowed) {
-    True -> Ok(text)
-    False -> Error(BadCommit)
+  use fields <- result.try(
+    json.parse(text, decoder) |> result.replace_error(Nil),
+  )
+  case fields {
+    None -> Ok(None)
+    Some(#(release, commit, schema)) -> {
+      use release <- result.map(parse(release))
+      Some(Stamp(release:, commit:, schema:))
+    }
   }
 }
 

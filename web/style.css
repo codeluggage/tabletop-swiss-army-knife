@@ -498,6 +498,13 @@ dd {
   overflow-wrap: anywhere;
 }
 
+.version-line {
+  margin-top: 3rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: center;
+}
+
 .update-bar {
   position: fixed;
   left: 0;

@@ -35,21 +35,27 @@ import tabletop/zip
 
 pub fn main() -> Nil {
   let flags =
-    Flags(running: browser.running_version(), hash: route.current_hash())
+    Flags(
+      running: browser.running_version(),
+      commit: browser.running_commit(),
+      hash: route.current_hash(),
+    )
   let app = lustre.application(init, update, view)
   let assert Ok(_) = lustre.start(app, "#app", flags)
   Nil
 }
 
-/// What the page knows at start: the stamped version and `location.hash`.
+/// What the page knows at start: the stamped version and commit, and
+/// `location.hash`.
 pub type Flags {
-  Flags(running: String, hash: String)
+  Flags(running: String, commit: String, hash: String)
 }
 
 /// Each `Option` is `None` until the browser answers.
 pub type Model {
   Model(
     running: String,
+    commit: String,
     route: Route,
     storage: Option(Result(Database, StorageError)),
     persistence: Option(Persistence),
@@ -106,6 +112,7 @@ pub fn init(flags: Flags) -> #(Model, Effect(Msg)) {
   let model =
     Model(
       running: flags.running,
+      commit: flags.commit,
       route: route.parse(flags.hash),
       storage: None,
       persistence: None,
@@ -284,6 +291,7 @@ fn from_lists(
 
 fn update_after_fetch(model: Model, fetched: Result(String, String)) -> Update {
   let running = version.parse(model.running)
+  // The `release` key. An app from before releases reads the `version` key.
   let latest =
     result.try(fetched, fn(text) {
       version.from_json(text) |> result.replace_error("")
@@ -397,7 +405,12 @@ pub fn view(model: Model) -> Element(Msg) {
   }
   html.main(
     [attribute.class("page")],
-    list.append(page, [update_bar(model.update)]),
+    list.append(page, [
+      html.footer([attribute.class("version-line")], [
+        html.text("Version " <> model.running),
+      ]),
+      update_bar(model.update),
+    ]),
   )
 }
 
@@ -480,6 +493,7 @@ fn home(model: Model) -> List(Element(Msg)) {
         html.h2([], [html.text("About this device")]),
         html.dl([], [
           fact("Version", model.running),
+          fact("Commit", model.commit),
           fact("Storage", storage_label(model.storage)),
           fact("Persistent storage", persistence_label(model.persistence)),
           fact(

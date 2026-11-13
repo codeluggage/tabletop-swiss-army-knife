@@ -19,10 +19,12 @@ pub fn main() -> Nil {
   gleeunit.main()
 }
 
-const running = "2026-11-12.204107.aaaaaaa"
+const running = "2026.11.12.2041"
+
+const commit = "aaaaaaa"
 
 fn model(update: tabletop.Update) -> Model {
-  let #(model, _) = tabletop.init(Flags(running:, hash: ""))
+  let #(model, _) = tabletop.init(Flags(running:, commit:, hash: ""))
   Model(..model, update:)
 }
 
@@ -31,36 +33,59 @@ fn fetched(model: Model, body: Result(String, String)) -> tabletop.Update {
   model.update
 }
 
-pub fn newer_build_offers_a_reload_test() {
-  let body = Ok("{\"version\":\"2026-11-13.080000.bbbbbbb\"}")
-  assert fetched(model(UpToDate), body) == Available
+fn release(text: String) -> Result(String, String) {
+  Ok(
+    "{\"release\":\""
+    <> text
+    <> "\",\"commit\":\"bbbbbbb\",\"schema\":4,\"version\":\"2026-11-13.080000.bbbbbbb\"}",
+  )
 }
 
-pub fn same_or_older_build_offers_nothing_test() {
-  let same = Ok("{\"version\":\"" <> running <> "\"}")
-  let older = Ok("{\"version\":\"2026-11-11.204107.ccccccc\"}")
-  assert fetched(model(UpToDate), same) == UpToDate
-  assert fetched(model(UpToDate), older) == UpToDate
+pub fn newer_release_offers_a_reload_test() {
+  assert fetched(model(UpToDate), release("2026.11.12.2042")) == Available
+}
+
+pub fn same_or_older_release_offers_nothing_test() {
+  assert fetched(model(UpToDate), release(running)) == UpToDate
+  assert fetched(model(UpToDate), release("2026.11.11.2359")) == UpToDate
 }
 
 pub fn failed_or_foreign_fetch_offers_nothing_test() {
   assert fetched(model(UpToDate), Error("offline")) == UpToDate
   assert fetched(model(UpToDate), Ok("<!doctype html>Not found")) == UpToDate
+  // A site from before releases has only the old key.
+  let old = Ok("{\"version\":\"2026-11-13.080000.bbbbbbb\"}")
+  assert fetched(model(UpToDate), old) == UpToDate
 }
 
 pub fn unstamped_page_offers_nothing_test() {
-  let #(unstamped, _) = tabletop.init(Flags(running: "__VERSION__", hash: ""))
-  let body = Ok("{\"version\":\"2026-11-13.080000.bbbbbbb\"}")
-  assert fetched(unstamped, body) == UpToDate
+  let #(unstamped, _) =
+    tabletop.init(Flags(running: "__VERSION__", commit: "__COMMIT__", hash: ""))
+  assert fetched(unstamped, release("2026.11.13.0800")) == UpToDate
 }
 
 pub fn a_reload_in_progress_stays_in_progress_test() {
-  let body = Ok("{\"version\":\"2026-11-11.204107.ccccccc\"}")
-  assert fetched(model(Applying), body) == Applying
+  assert fetched(model(Applying), release("2026.11.11.2041")) == Applying
+}
+
+pub fn every_screen_ends_with_the_version_test() {
+  let line = "<footer class=\"version-line\">Version 2026.11.12.2041</footer>"
+  let home = tabletop.view(model(UpToDate)) |> element.to_string
+  assert string.contains(home, line)
+  let list =
+    tabletop.view(Model(..model(UpToDate), route: route.ListPage("gone")))
+    |> element.to_string
+  assert string.contains(list, line)
+}
+
+pub fn about_this_device_shows_the_version_and_commit_test() {
+  let home = tabletop.view(model(UpToDate)) |> element.to_string
+  assert string.contains(home, "<dt>Version</dt><dd>2026.11.12.2041</dd>")
+  assert string.contains(home, "<dt>Commit</dt><dd>aaaaaaa</dd>")
 }
 
 pub fn the_screen_starts_from_the_hash_test() {
-  let #(model, _) = tabletop.init(Flags(running:, hash: "#/list/abc"))
+  let #(model, _) = tabletop.init(Flags(running:, commit:, hash: "#/list/abc"))
   assert model.route == route.ListPage("abc")
 }
 

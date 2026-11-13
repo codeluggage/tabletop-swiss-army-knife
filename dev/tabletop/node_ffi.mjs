@@ -1,16 +1,42 @@
-// Node calls for the build and serve commands. No decisions here.
-import { execSync } from "node:child_process";
+// Node calls for the dev commands. No decisions here.
+import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { Result$Ok, Result$Error, BitArray$BitArray$data } from "../gleam.mjs";
+import { Result$Ok, Result$Error, BitArray$BitArray$data, toList } from "../gleam.mjs";
 
-export function now_iso() {
-  return new Date().toISOString();
+export function now_ms() {
+  return Date.now();
 }
 
-export function git_commit() {
+// The date and time parts of the instant `ms` on the wall clock of `zone`,
+// 24-hour, as a list of #(type, value) such as #("hour", "15").
+export function zoned_parts(ms, zone) {
+  const format = new Intl.DateTimeFormat("en-GB", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  return toList(format.formatToParts(ms).map((part) => [part.type, part.value]));
+}
+
+// Runs `program` with the list `args`, never through a shell, and waits for
+// it. #(exit status, stdout, stderr), or Error when it could not start. A
+// program stopped by a signal has no status and gives -1.
+export function run(program, args) {
+  const out = spawnSync(program, args.toArray(), { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (out.error) return Result$Error(String(out.error));
+  return Result$Ok([out.status ?? -1, out.stdout, out.stderr]);
+}
+
+// #(HTTP status, body) of a GET, or Error when there was no answer.
+export async function fetch_text(url) {
   try {
-    const out = execSync("git rev-parse --short HEAD", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    return Result$Ok(out.trim());
+    const response = await fetch(url);
+    return Result$Ok([response.status, await response.text()]);
   } catch (error) {
     return Result$Error(String(error));
   }

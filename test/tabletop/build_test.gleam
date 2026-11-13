@@ -4,6 +4,7 @@ import gleam/result
 import gleam/string
 import simplifile
 import tabletop/build.{FileFailed, ImportOutsideRoot}
+import tabletop/version
 
 pub fn import_specifiers_finds_relative_imports_test() {
   let source =
@@ -93,4 +94,22 @@ pub fn stamp_replaces_every_placeholder_test() {
 
 pub fn stamp_fails_on_a_missing_placeholder_test() {
   assert build.stamp("no marks", [#("__V__", "1")]) == Error("__V__")
+}
+
+// 2026-01-15T15:42:30Z and 2026-07-15T15:42:30Z.
+const january = 1_768_491_750_000
+
+const july = 1_784_130_150_000
+
+pub fn release_at_reads_the_london_clock_test() {
+  // In January London keeps UTC, in July it is an hour ahead.
+  let assert Ok(winter) = build.release_at(january)
+  assert version.to_string(winter) == "2026.01.15.1542"
+  let assert Ok(summer) = build.release_at(july)
+  assert version.to_string(summer) == "2026.07.15.1642"
+}
+
+pub fn legacy_version_keeps_the_old_utc_shape_test() {
+  assert build.legacy_version(january, "776d09c") == "2026-01-15.154230.776d09c"
+  assert build.legacy_version(july, "776d09c") == "2026-07-15.154230.776d09c"
 }

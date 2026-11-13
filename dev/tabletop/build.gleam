@@ -1,9 +1,10 @@
 //// `gleam run -m tabletop/build` writes the site to `dist/`: the shell from
 //// `web/`, every compiled module the app imports under `dist/js/`, and
 //// `version.json`. The version is stamped into the page, `version.json` and
-//// the service worker's cache name, and the service worker gets the list of
-//// files to keep for offline use.
+//// the service worker's cache name, the commit into the page, and the service
+//// worker gets the list of files to keep for offline use.
 
+import gleam/dict
 import gleam/io
 import gleam/json
 import gleam/list
@@ -11,7 +12,8 @@ import gleam/result
 import gleam/set.{type Set}
 import gleam/string
 import simplifile
-import tabletop/version
+import tabletop/storage
+import tabletop/version.{type Version}
 
 const compiled = "build/dev/javascript"
 
@@ -21,11 +23,15 @@ const dist = "dist"
 
 const entry = "tabletop/tabletop.mjs"
 
+/// The clock of the person who uses the app. A version is the minute of the
+/// build on this clock, so the version he sees matches his own watch.
+const zone = "Europe/London"
+
 pub type BuildError {
   FileFailed(path: String, error: simplifile.FileError)
   ImportOutsideRoot(importer: String, specifier: String)
   MissingStamp(file: String, stamp: String)
-  BadVersion(version.VersionError)
+  NoVersion
 }
 
 pub fn main() -> Nil {
@@ -39,17 +45,16 @@ pub fn main() -> Nil {
 }
 
 fn build() -> Result(String, BuildError) {
-  let commit = case git_commit() {
-    Ok(commit) -> commit
-    Error(_) -> {
-      io.println_error("No git commit found, the version says nogit.")
+  let commit = case run("git", ["rev-parse", "--short", "HEAD"]) {
+    Ok(#(0, out, _)) -> string.trim(out)
+    _ -> {
+      io.println_error("No git commit found, the commit says nogit.")
       "nogit"
     }
   }
-  use version <- result.try(
-    version.from_build(now_iso(), commit) |> result.map_error(BadVersion),
-  )
-  let stamp = version.to_string(version)
+  let now = now_ms()
+  use release <- result.try(release_at(now) |> result.replace_error(NoVersion))
+  let stamp = version.to_string(release)
   use _ <- result.try(simplifile.delete_all([dist]) |> on_file(dist))
   use modules <- result.try(module_graph(entry, read_compiled))
   use _ <- result.try(
@@ -68,15 +73,64 @@ fn build() -> Result(String, BuildError) {
       let from = web <> "/" <> file
       let to = dist <> "/" <> file
       case file {
-        "index.html" -> stamp_file(from, to, [#("__VERSION__", stamp)])
+        "index.html" ->
+          stamp_file(from, to, [
+            #("__VERSION__", stamp),
+            #("__COMMIT__", commit),
+          ])
         "sw.js" ->
           stamp_file(from, to, [#("__VERSION__", stamp), #("__FILES__", files)])
         _ -> copy(from, to)
       }
     }),
   )
-  use _ <- result.try(write(dist <> "/version.json", version.to_json(version)))
+  let json =
+    version.Stamp(release:, commit:, schema: storage.schema_version())
+    |> version.to_json(legacy: legacy_version(now, commit))
+  use _ <- result.try(write(dist <> "/version.json", json))
   Ok(stamp)
+}
+
+/// The version of a build made at `ms`: its minute on the clock of `zone`.
+pub fn release_at(ms: Int) -> Result(Version, Nil) {
+  let part = clock(ms, zone)
+  version.parse(
+    part("year")
+    <> "."
+    <> part("month")
+    <> "."
+    <> part("day")
+    <> "."
+    <> part("hour")
+    <> part("minute"),
+  )
+}
+
+/// The `version` key of `version.json` in the shape it had before releases:
+/// the UTC date, the UTC time to the second and the commit, such as
+/// `2026-11-13.154207.776d09c`. An app installed before releases reads only
+/// this key, with its own parser, and shows its Reload bar when it is newer.
+/// No new code reads it. The key can go when no such app is left.
+pub fn legacy_version(ms: Int, commit: String) -> String {
+  let part = clock(ms, "UTC")
+  part("year")
+  <> "-"
+  <> part("month")
+  <> "-"
+  <> part("day")
+  <> "."
+  <> part("hour")
+  <> part("minute")
+  <> part("second")
+  <> "."
+  <> commit
+}
+
+/// Each part of the instant `ms` on the wall clock of `zone` by its name, such
+/// as `"hour"`, two digits from 00 to 23.
+fn clock(ms: Int, zone: String) -> fn(String) -> String {
+  let parts = dict.from_list(zoned_parts(ms, zone))
+  fn(name) { dict.get(parts, name) |> result.unwrap("") }
 }
 
 /// What the service worker keeps for offline use, as URLs relative to it:
@@ -260,15 +314,21 @@ fn describe(error: BuildError) -> String {
     ImportOutsideRoot(importer, specifier) ->
       importer <> " imports " <> specifier <> ", outside " <> compiled
     MissingStamp(file, stamp) -> file <> " has no " <> stamp <> " to replace"
-    BadVersion(error) -> "no valid version: " <> string.inspect(error)
+    NoVersion -> "the clock gave no valid version"
   }
 }
 
-@external(javascript, "./node_ffi.mjs", "now_iso")
-fn now_iso() -> String
+@external(javascript, "./node_ffi.mjs", "now_ms")
+fn now_ms() -> Int
 
-@external(javascript, "./node_ffi.mjs", "git_commit")
-fn git_commit() -> Result(String, String)
+@external(javascript, "./node_ffi.mjs", "zoned_parts")
+fn zoned_parts(ms: Int, zone: String) -> List(#(String, String))
+
+@external(javascript, "./node_ffi.mjs", "run")
+fn run(
+  program: String,
+  args: List(String),
+) -> Result(#(Int, String, String), String)
 
 @external(javascript, "./node_ffi.mjs", "set_exit_code")
 fn set_exit_code(code: Int) -> Nil

@@ -1,5 +1,5 @@
-//// The page-level browser calls the app makes: the version stamped into the
-//// page, `version.json`, the service worker, tab visibility, the clock,
+//// The page-level browser calls the app makes: the version and commit
+//// stamped into the page, `version.json`, the service worker, tab visibility, the clock,
 //// history and scrolling, ids and the chosen file.
 
 import gleam/dynamic.{type Dynamic}
@@ -8,6 +8,10 @@ import gleam/javascript/promise.{type Promise}
 /// The version the build stamped into the running page.
 @external(javascript, "./browser_ffi.mjs", "running_version")
 pub fn running_version() -> String
+
+/// The commit the build stamped into the running page.
+@external(javascript, "./browser_ffi.mjs", "running_commit")
+pub fn running_commit() -> String
 
 /// The body of `url`, fetched past every cache.
 @external(javascript, "./browser_ffi.mjs", "fetch_no_store")

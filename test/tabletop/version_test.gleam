@@ -1,57 +1,64 @@
-import tabletop/version.{
-  BadCommit, BadDate, BadTime, NotThreeParts, NotVersionJson,
-}
+import gleam/option.{None, Some}
+import tabletop/version.{Stamp}
 
 pub fn parse_round_trips_test() {
-  let assert Ok(parsed) = version.parse("2026-11-12.204107.abc1234")
-  assert version.to_string(parsed) == "2026-11-12.204107.abc1234"
+  let assert Ok(parsed) = version.parse("2026.11.13.1542")
+  assert version.to_string(parsed) == "2026.11.13.1542"
 }
 
-pub fn parse_rejects_malformed_versions_test() {
-  assert version.parse("") == Error(NotThreeParts)
-  assert version.parse("2026-11-12.204107") == Error(NotThreeParts)
-  assert version.parse("2026-11-12.204107.abc.def") == Error(NotThreeParts)
-  assert version.parse("26-11-12.204107.abc1234") == Error(BadDate)
-  assert version.parse("2026-1-12.204107.abc1234") == Error(BadDate)
-  assert version.parse("2026-11-12-01.204107.abc1234") == Error(BadDate)
-  assert version.parse("2026-11-12.2041.abc1234") == Error(BadTime)
-  assert version.parse("2026-11-12.20410x.abc1234") == Error(BadTime)
-  assert version.parse("2026-11-12.204107.") == Error(BadCommit)
-  assert version.parse("2026-11-12.204107.ABC1234") == Error(BadCommit)
-  assert version.parse("__VERSION__") == Error(NotThreeParts)
+pub fn parse_takes_only_the_release_format_test() {
+  assert version.parse("") == Error(Nil)
+  assert version.parse("__VERSION__") == Error(Nil)
+  assert version.parse("2026-11-12.204107.abc1234") == Error(Nil)
+  assert version.parse("2026.11.13") == Error(Nil)
+  assert version.parse("2026.11.13.15.42") == Error(Nil)
+  assert version.parse("26.11.13.1542") == Error(Nil)
+  assert version.parse("2026.1.13.1542") == Error(Nil)
+  assert version.parse("2026.11.3.1542") == Error(Nil)
+  assert version.parse("2026.11.13.154") == Error(Nil)
+  assert version.parse("2026.11.13.15420") == Error(Nil)
+  assert version.parse("2026.11.13.15x2") == Error(Nil)
 }
 
-pub fn from_build_reads_the_iso_time_test() {
-  let assert Ok(built) =
-    version.from_build("2026-11-12T20:41:07.123Z", "abc1234")
-  assert version.to_string(built) == "2026-11-12.204107.abc1234"
-  let assert Ok(no_git) =
-    version.from_build("2026-11-12T20:41:07.123Z", "nogit")
-  assert version.to_string(no_git) == "2026-11-12.204107.nogit"
-}
-
-pub fn is_newer_orders_by_build_time_test() {
-  let assert Ok(first) = version.parse("2026-11-12.204107.aaaaaaa")
-  let assert Ok(same_time) = version.parse("2026-11-12.204107.bbbbbbb")
-  let assert Ok(a_second_later) = version.parse("2026-11-12.204108.ccccccc")
-  let assert Ok(next_year) = version.parse("2027-01-01.000000.ddddddd")
-  assert version.is_newer(a_second_later, than: first)
-  assert version.is_newer(next_year, than: a_second_later)
+pub fn is_newer_orders_by_minute_test() {
+  let assert Ok(first) = version.parse("2026.11.13.1542")
+  let assert Ok(a_minute_later) = version.parse("2026.11.13.1543")
+  let assert Ok(next_day) = version.parse("2026.11.14.0001")
+  let assert Ok(next_year) = version.parse("2027.01.01.0000")
+  assert version.is_newer(a_minute_later, than: first)
+  assert version.is_newer(next_day, than: a_minute_later)
+  assert version.is_newer(next_year, than: next_day)
   assert !version.is_newer(first, than: next_year)
   assert !version.is_newer(first, than: first)
-  assert !version.is_newer(same_time, than: first)
 }
 
-pub fn version_json_round_trips_test() {
-  let assert Ok(parsed) = version.parse("2026-11-12.204107.abc1234")
-  assert version.to_json(parsed)
-    == "{\"version\":\"2026-11-12.204107.abc1234\"}"
-  assert version.from_json(version.to_json(parsed)) == Ok(parsed)
+pub fn version_json_has_four_keys_test() {
+  let assert Ok(release) = version.parse("2026.11.13.1542")
+  let stamp = Stamp(release:, commit: "776d09c", schema: 4)
+  let json = version.to_json(stamp, legacy: "2026-11-13.154207.776d09c")
+  assert json
+    == "{\"release\":\"2026.11.13.1542\",\"commit\":\"776d09c\",\"schema\":4,\"version\":\"2026-11-13.154207.776d09c\"}"
+  assert version.from_json(json) == Ok(release)
+  assert version.stamp_from_json(json) == Ok(Some(stamp))
 }
 
-pub fn from_json_rejects_other_bodies_test() {
+pub fn from_json_reads_only_the_release_test() {
   assert version.from_json("<!doctype html><title>Not found</title>")
-    == Error(NotVersionJson)
-  assert version.from_json("{\"other\":1}") == Error(NotVersionJson)
-  assert version.from_json("{\"version\":\"soon\"}") == Error(NotThreeParts)
+    == Error(Nil)
+  assert version.from_json("{\"version\":\"2026-11-13.154207.776d09c\"}")
+    == Error(Nil)
+  assert version.from_json("{\"release\":\"soon\"}") == Error(Nil)
+}
+
+pub fn stamp_from_json_knows_a_site_from_before_releases_test() {
+  assert version.stamp_from_json("{\"version\":\"2026-11-13.154207.776d09c\"}")
+    == Ok(None)
+  assert version.stamp_from_json("<!doctype html>") == Error(Nil)
+  assert version.stamp_from_json("\"2026.11.13.1542\"") == Error(Nil)
+  assert version.stamp_from_json("{\"release\":\"2026.11.13.1542\"}")
+    == Error(Nil)
+  assert version.stamp_from_json(
+      "{\"release\":\"soon\",\"commit\":\"776d09c\",\"schema\":4}",
+    )
+    == Error(Nil)
 }

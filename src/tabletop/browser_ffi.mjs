@@ -6,6 +6,10 @@ export function running_version() {
   return document.querySelector('meta[name="tabletop-version"]').content;
 }
 
+export function running_commit() {
+  return document.querySelector('meta[name="tabletop-commit"]').content;
+}
+
 export function fetch_no_store(url) {
   return fetch(url, { cache: "no-store" }).then(
     async (response) => Result$Ok(await response.text()),
