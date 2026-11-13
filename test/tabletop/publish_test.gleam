@@ -1,11 +1,14 @@
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
+import simplifile
+import tabletop/live_check
 import tabletop/publish.{
-  Behind, Build, Cancelled, CheckFailed, CouldNotRun, Failed, FailedAt,
-  FailedSomewhere, Format, Live, NoAddress, NoRun, NotCombined, NotOnMain,
-  NotSent, NotShownYet, Passed, Refused, RunFailed, RunNotStarted, RunTooSlow,
-  Running, SameLines, Sent, StatusUnreadable, Tests, Types, Unreachable, Unsaved,
+  Behind, Build, Cancelled, CheckFailed, CheckHere, CouldNotRun, Failed,
+  FailedAgain, FailedAt, FailedOnlyOnGitHub, FailedSomewhere, Format, GiveUp,
+  Live, NoAddress, NoRun, NotCombined, NotOnMain, NotSent, NotShownYet, Passed,
+  Refused, RunNotStarted, RunTooSlow, Running, SameLines, SameMinute, SendAgain,
+  Sent, StatusUnreadable, StepRemoved, Tests, Types, Unreachable, Unsaved,
   WentLive,
 }
 
@@ -33,9 +36,14 @@ pub fn every_failure_is_one_or_two_plain_sentences_test() {
     CheckFailed(Types),
     CheckFailed(Tests),
     CheckFailed(Build),
+    SameMinute,
+    StepRemoved,
     NotSent,
-    RunFailed(Some("Run the tests")),
-    RunFailed(None),
+    FailedOnlyOnGitHub(Types),
+    FailedOnlyOnGitHub(Tests),
+    FailedOnlyOnGitHub(Build),
+    FailedAgain(Some("Publish the site")),
+    FailedAgain(None),
     RunNotStarted,
     RunTooSlow,
     StatusUnreadable,
@@ -58,15 +66,55 @@ pub fn every_failure_is_one_or_two_plain_sentences_test() {
 pub fn the_sentences_say_what_happened_test() {
   assert publish.say(SameLines)
     == "This change and a change from another person touch the same lines, so nothing was published. Ask the person who helps with the project."
-  assert publish.say(RunFailed(Some("Run the tests")))
-    == "The step \"Run the tests\" failed on GitHub, so the live site is unchanged."
+  assert publish.say(SameMinute)
+    == "A version went live in this same minute, so nothing was published. Run this command again in one minute."
+  assert publish.say(StepRemoved)
+    == "This change removes a storage step that phones already have, so nothing was published. Put the step back in upgrades in src/tabletop/storage.gleam."
+  assert publish.say(FailedOnlyOnGitHub(Tests))
+    == "The tests failed on GitHub, but the same checks passed on this computer, so the live site is unchanged. Ask the person who helps with the project."
+  assert publish.say(FailedAgain(Some("Publish the site")))
+    == "The step \"Publish the site\" failed on GitHub again, so the live site is unchanged. Ask the person who helps with the project."
   assert publish.say(NotOnMain("other"))
     == "Publishing works only from main, and this copy is on \"other\", so nothing was published."
 }
 
 pub fn the_last_lines_name_the_live_version_test() {
-  assert publish.say(Live("2026.11.13.1542"))
-    == "Version 2026.11.13.1542 is live.\nOpen the app. If a bar says \"New version\", tap Reload."
+  let closing =
+    "Version 2026.11.13.1542 is live.\nOpen the app. If a bar says \"New version\", tap Reload."
+  assert publish.say(Live("2026.11.13.1542", tagged: True)) == closing
+  // Without its tag, one sentence comes before the same two closing lines.
+  assert publish.say(Live("2026.11.13.1542", tagged: False))
+    == "Version 2026.11.13.1542 is live, but the list of versions will not show it. Tell the person who helps with the project.\n"
+    <> closing
+}
+
+pub fn a_build_the_live_site_refuses_is_not_sent_test() {
+  assert publish.may_send(live_check.NotLater("")) == Error(SameMinute)
+  assert publish.may_send(live_check.OlderLayout("")) == Error(StepRemoved)
+  assert publish.may_send(live_check.MayGoLive("")) == Ok(Nil)
+  // GitHub runs the same check before it publishes.
+  assert publish.may_send(live_check.CannotTell("")) == Ok(Nil)
+}
+
+pub fn a_failed_check_on_github_is_checked_here_test() {
+  assert publish.retry(Some("Check the types"), "a change") == CheckHere(Types)
+  assert publish.retry(Some("Run the tests"), "a change") == CheckHere(Tests)
+  assert publish.retry(Some("Build the site"), "publish again")
+    == CheckHere(Build)
+  // The step names are the ones GitHub runs.
+  let assert Ok(workflow) = simplifile.read(".github/workflows/deploy.yml")
+  list.each(["Check the types", "Run the tests", "Build the site"], fn(step) {
+    assert string.contains(workflow, "name: " <> step) as step
+  })
+}
+
+pub fn any_other_failure_is_sent_once_more_test() {
+  let live_check = "Check that this version may replace the live one"
+  assert publish.retry(Some(live_check), "a change") == SendAgain
+  assert publish.retry(Some("Publish the site"), "a change") == SendAgain
+  assert publish.retry(None, "a change") == SendAgain
+  assert publish.retry(Some("Publish the site"), publish.again) == GiveUp
+  assert publish.retry(None, publish.again) == GiveUp
 }
 
 pub fn read_push_test() {

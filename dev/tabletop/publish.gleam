@@ -4,10 +4,13 @@
 //// developer, so every message is one or two plain sentences.
 ////
 //// In order: on main with nothing unsaved; take in the changes on GitHub;
-//// the checks and the build; send the change to GitHub; wait for GitHub to
-//// publish it; wait for the live site to show it. Each failure stops there,
-//// changes nothing further and says so. With nothing to send it only waits,
-//// so it also answers which version is live.
+//// the checks and the build; the live check against the live site; send the
+//// change to GitHub; wait for GitHub to publish it; wait for the live site
+//// to show it; look for its version tag. Each failure stops there, changes
+//// nothing further and says so. With nothing to send it only waits, so a
+//// publish that was cut off picks up its wait when it runs again, and it also
+//// answers which version is live. A run that failed on GitHub outside the
+//// checks is sent once more.
 
 import gleam/bool
 import gleam/dynamic/decode
@@ -19,6 +22,9 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import tabletop/live_check.{
+  type Verdict, CannotTell, MayGoLive, NotLater, OlderLayout,
+}
 import tabletop/site.{type Repository}
 import tabletop/version
 
@@ -39,13 +45,22 @@ pub type Outcome {
   SameLines
   NotCombined
   CheckFailed(Check)
+  /// The live site has a version that is not earlier than the new one.
+  SameMinute
+  /// The new build keeps saved data at a lower storage schema number than
+  /// the live site.
+  StepRemoved
   NotSent
-  RunFailed(step: Option(String))
+  /// A check failed on GitHub and passed on this computer.
+  FailedOnlyOnGitHub(Check)
+  /// The run failed again after publish sent the work once more.
+  FailedAgain(step: Option(String))
   RunNotStarted
   RunTooSlow
   StatusUnreadable
   NotShownYet
-  Live(release: String)
+  /// `tagged` is False when GitHub did not tag the commit with the version.
+  Live(release: String, tagged: Bool)
 }
 
 /// An outcome that stops the publish, and what the failing program printed,
@@ -60,14 +75,17 @@ const checks = [
   #(Build, ["run", "-m", "tabletop/build"]),
 ]
 
-/// The wait between two questions about the run. GitHub answers 60 questions
-/// an hour without a sign-in, and one publish asks at most 46.
+/// The message of the empty commit that sends the same work once more.
+pub const again = "publish again"
+
+/// The wait between two questions about the run. Without gh, GitHub answers
+/// 60 questions an hour, and one publish asks at most 32.
 const run_poll_ms = 20_000
 
-/// Five minutes for the run to appear, fifteen for it to finish.
-const start_polls = 15
+/// Three minutes for the run to appear, ten for it to finish.
+const start_polls = 9
 
-const run_polls = 45
+const run_polls = 30
 
 /// Five minutes for the live site to show the change.
 const live_poll_ms = 10_000
@@ -78,7 +96,7 @@ pub fn main() -> Nil {
   let _ = {
     use published <- promise.map(publish())
     case published {
-      Ok(release) -> io.println(say(Live(release)))
+      Ok(live) -> io.println(say(live))
       Error(#(outcome, detail)) -> {
         case string.trim(detail) {
           "" -> Nil
@@ -95,6 +113,7 @@ pub fn main() -> Nil {
 /// The last words of a publish.
 pub fn say(outcome: Outcome) -> String {
   let unpublished = ", so nothing was published."
+  let unchanged = ", so the live site is unchanged."
   let ask = " Ask the person who helps with the project."
   let later = " Run this command again later to see which version is live."
   case outcome {
@@ -140,24 +159,87 @@ pub fn say(outcome: Outcome) -> String {
       "The site could not be built"
       <> unpublished
       <> " Fix what the build says above and publish again."
+    SameMinute ->
+      "A version went live in this same minute"
+      <> unpublished
+      <> " Run this command again in one minute."
+    StepRemoved ->
+      "This change removes a storage step that phones already have"
+      <> unpublished
+      <> " Put the step back in upgrades in src/tabletop/storage.gleam."
     NotSent -> "GitHub did not take the change" <> unpublished <> ask
-    RunFailed(Some(step)) ->
-      "The step \""
-      <> step
-      <> "\" failed on GitHub, so the live site is unchanged."
-    RunFailed(None) ->
-      "Publishing failed on GitHub, so the live site is unchanged."
+    FailedOnlyOnGitHub(check) ->
+      "The "
+      <> check_name(check)
+      <> " failed on GitHub, but the same checks passed on this computer"
+      <> unchanged
+      <> ask
+    FailedAgain(Some(step)) ->
+      "The step \"" <> step <> "\" failed on GitHub again" <> unchanged <> ask
+    FailedAgain(None) -> "Publishing failed on GitHub again" <> unchanged <> ask
     RunNotStarted ->
-      "GitHub has not started publishing after five minutes." <> later
-    RunTooSlow -> "GitHub is still publishing after fifteen minutes." <> later
+      "GitHub has not started publishing after three minutes." <> later
+    RunTooSlow -> "GitHub is still publishing after ten minutes." <> later
     StatusUnreadable -> "GitHub did not say how publishing went." <> later
     NotShownYet ->
       "GitHub has published, but the live site does not show it after five minutes."
       <> later
-    Live(release) ->
-      "Version "
+    Live(release, tagged) -> {
+      let untagged = case tagged {
+        True -> ""
+        False ->
+          "Version "
+          <> release
+          <> " is live, but the list of versions will not show it. Tell the person who helps with the project.\n"
+      }
+      untagged
+      <> "Version "
       <> release
       <> " is live.\nOpen the app. If a bar says \"New version\", tap Reload."
+    }
+  }
+}
+
+fn check_name(check: Check) -> String {
+  case check {
+    Format -> "format check"
+    Types -> "type check"
+    Tests -> "tests"
+    Build -> "build"
+  }
+}
+
+/// Whether a build may be sent, from the live check's verdict on it. When
+/// this computer cannot tell, the same check on GitHub decides.
+pub fn may_send(verdict: Verdict) -> Result(Nil, Outcome) {
+  case verdict {
+    NotLater(_) -> Error(SameMinute)
+    OlderLayout(_) -> Error(StepRemoved)
+    MayGoLive(_) | CannotTell(_) -> Ok(Nil)
+  }
+}
+
+/// What publish does after the run it waited for failed.
+pub type Retry {
+  /// A check failed on GitHub: run the checks here, then ask for help.
+  CheckHere(Check)
+  /// Send the same work once more, as an empty commit with the message
+  /// `again`.
+  SendAgain
+  /// It was sent once more and failed again.
+  GiveUp
+}
+
+/// What to do about a failed run, from the name of the step that failed,
+/// when GitHub said it, and the first line of the message of the commit the
+/// run was for. The step names are the ones in `deploy.yml`.
+pub fn retry(step: Option(String), subject: String) -> Retry {
+  case step {
+    Some("Check the types") -> CheckHere(Types)
+    Some("Run the tests") -> CheckHere(Tests)
+    Some("Build the site") -> CheckHere(Build)
+    _ if subject == again -> GiveUp
+    _ -> SendAgain
   }
 }
 
@@ -256,54 +338,58 @@ pub fn read_jobs(text: String) -> Result(Failure, Nil) {
 
 // --- The thin layer: processes and requests ---------------------------------
 
-fn publish() -> Promise(Result(String, Stop)) {
+fn publish() -> Promise(Result(Outcome, Stop)) {
   case prepare() {
     Error(stop) -> promise.resolve(Error(stop))
-    Ok(#(repository, commit)) -> {
-      io.println("Waiting for GitHub to publish. This takes a few minutes.")
-      use _ <- promise.try_await(wait_for_run(
-        repository,
-        "head_sha=" <> commit,
-        0,
-      ))
-      io.println("Waiting for the live site to show it.")
-      wait_for_live(repository, commit, 0)
+    Ok(repository) -> {
+      use commit <- promise.try_await(send(repository, tries: 2))
+      deploy(repository, commit)
     }
   }
 }
 
-/// Steps 1 to 4: the commit that GitHub has, sent now or before.
-fn prepare() -> Result(#(Repository, String), Stop) {
+/// Steps 1 and 2: on main with nothing unsaved, and the project on GitHub.
+fn prepare() -> Result(Repository, Stop) {
   use branch <- result.try(git(["branch", "--show-current"]))
   let branch = string.trim(branch)
   use <- bool.guard(branch != "main", Error(#(NotOnMain(branch), "")))
   use status <- result.try(git(["status", "--porcelain"]))
   use <- bool.guard(string.trim(status) != "", Error(#(Unsaved, status)))
-  use repository <- result.try(
-    site.origin() |> result.map_error(fn(reason) { #(NoAddress, reason) }),
-  )
-  use commit <- result.map(send(tries: 2))
-  #(repository, commit)
+  site.origin() |> result.map_error(fn(reason) { #(NoAddress, reason) })
 }
 
-fn send(tries tries: Int) -> Result(String, Stop) {
-  use _ <- result.try(take_in())
-  use commit <- result.try(git(["rev-parse", "HEAD"]))
-  use on_github <- result.try(git(["rev-parse", "origin/main"]))
-  let commit = string.trim(commit)
-  use <- bool.guard(commit == string.trim(on_github), Ok(commit))
-  use _ <- result.try(run_checks())
-  io.println("Sending the change to GitHub.")
-  // Never forced: a plain push of main, which GitHub refuses when it has
-  // changes this copy has not taken in.
-  use #(status, out, error) <- result.try(
-    run("git", ["push", "--porcelain", "origin", "main"])
-    |> result.map_error(fn(reason) { #(CouldNotRun("git"), reason) }),
-  )
-  case read_push(status, out), tries {
-    Sent, _ -> Ok(commit)
-    Behind, 2 -> send(tries: 1)
-    _, _ -> Error(#(NotSent, out <> error))
+/// Steps 3 to 5: the commit that GitHub has, sent now or before.
+fn send(
+  repository: Repository,
+  tries tries: Int,
+) -> Promise(Result(String, Stop)) {
+  let ready = {
+    use _ <- result.try(take_in())
+    use commit <- result.try(git(["rev-parse", "HEAD"]))
+    use on_github <- result.try(git(["rev-parse", "origin/main"]))
+    let commit = string.trim(commit)
+    use <- bool.guard(commit == string.trim(on_github), Ok(#(commit, False)))
+    use _ <- result.map(run_checks())
+    #(commit, True)
+  }
+  case ready {
+    Error(stop) -> promise.resolve(Error(stop))
+    Ok(#(commit, False)) -> promise.resolve(Ok(commit))
+    Ok(#(commit, True)) -> {
+      use _ <- promise.try_await(check_live(repository))
+      io.println("Sending the change to GitHub.")
+      // Never forced: a plain push of main, which GitHub refuses when it has
+      // changes this copy has not taken in.
+      case run("git", ["push", "--porcelain", "origin", "main"]) {
+        Error(reason) -> promise.resolve(Error(#(CouldNotRun("git"), reason)))
+        Ok(#(status, out, error)) ->
+          case read_push(status, out), tries {
+            Sent, _ -> promise.resolve(Ok(commit))
+            Behind, 2 -> send(repository, tries: 1)
+            _, _ -> promise.resolve(Error(#(NotSent, out <> error)))
+          }
+      }
+    }
   }
 }
 
@@ -341,48 +427,123 @@ fn run_checks() -> Result(Nil, Stop) {
   })
 }
 
-/// Step 5: the deploy run of `query`, or the newest on main once a newer push
-/// has taken over.
+/// The live check GitHub runs before it publishes, on the build in `dist/`,
+/// so a refusal is known before anything is sent.
+fn check_live(repository: Repository) -> Promise(Result(Nil, Stop)) {
+  case live_check.read_built() {
+    Error(reason) -> promise.resolve(Error(#(CheckFailed(Build), reason)))
+    Ok(built) -> {
+      use live <- promise.map(site.live_version(repository))
+      live_check.decide(built, live)
+      |> may_send
+      |> result.map_error(fn(outcome) { #(outcome, "") })
+    }
+  }
+}
+
+/// Steps 6 to 8 for `commit`, which GitHub has.
+fn deploy(
+  repository: Repository,
+  commit: String,
+) -> Promise(Result(Outcome, Stop)) {
+  io.println("Waiting for GitHub to publish. This takes a few minutes.")
+  use failed <- promise.try_await(wait_for_run(
+    repository,
+    "head_sha=" <> commit,
+    0,
+  ))
+  case failed {
+    None -> go_live(repository, commit)
+    Some(id) -> {
+      use answer <- promise.await(
+        ask_github(api(
+          repository,
+          "actions/runs/" <> int.to_string(id) <> "/jobs",
+        )),
+      )
+      case read_answer(answer, read_jobs) {
+        Ok(WentLive) -> go_live(repository, commit)
+        Ok(FailedAt(step)) -> try_again(repository, Some(step))
+        Ok(FailedSomewhere) | Error(_) -> try_again(repository, None)
+      }
+    }
+  }
+}
+
+/// Step 6: the deploy run of `query`, or the newest on main once a newer push
+/// has taken over. The id of the run when it failed.
 fn wait_for_run(
   repository: Repository,
   query: String,
   polls: Int,
-) -> Promise(Result(Nil, Stop)) {
+) -> Promise(Result(Option(Int), Stop)) {
   use answer <- promise.await(
-    fetch_text(api(
+    ask_github(api(
       repository,
       "actions/workflows/deploy.yml/runs?event=push&per_page=1&" <> query,
     )),
   )
-  let again = fn(query) {
+  let poll_again = fn(query) {
     use _ <- promise.await(promise.wait(run_poll_ms))
     wait_for_run(repository, query, polls + 1)
   }
   case read_answer(answer, read_runs) {
     Error(detail) -> promise.resolve(Error(#(StatusUnreadable, detail)))
-    Ok(Passed) -> promise.resolve(Ok(Nil))
-    Ok(Failed(id)) -> why_failed(repository, id)
+    Ok(Passed) -> promise.resolve(Ok(None))
+    Ok(Failed(id)) -> promise.resolve(Ok(Some(id)))
     Ok(NoRun) if polls >= start_polls ->
       promise.resolve(Error(#(RunNotStarted, "")))
     Ok(_) if polls >= run_polls -> promise.resolve(Error(#(RunTooSlow, "")))
-    Ok(Cancelled) -> again("branch=main")
-    Ok(NoRun) | Ok(Running) -> again(query)
+    Ok(Cancelled) -> poll_again("branch=main")
+    Ok(NoRun) | Ok(Running) -> poll_again(query)
   }
 }
 
-fn why_failed(repository: Repository, id: Int) -> Promise(Result(Nil, Stop)) {
-  use answer <- promise.map(
-    fetch_text(api(repository, "actions/runs/" <> int.to_string(id) <> "/jobs")),
-  )
-  case read_answer(answer, read_jobs) {
-    Ok(WentLive) -> Ok(Nil)
-    Ok(FailedAt(step)) -> Error(#(RunFailed(Some(step)), ""))
-    Ok(FailedSomewhere) -> Error(#(RunFailed(None), ""))
-    Error(detail) -> Error(#(RunFailed(None), detail))
+/// After a failed run: check here and ask for help, send the same work once
+/// more, or give up.
+fn try_again(
+  repository: Repository,
+  step: Option(String),
+) -> Promise(Result(Outcome, Stop)) {
+  let subject = git(["log", "-1", "--format=%s"]) |> result.map(string.trim)
+  case result.map(subject, retry(step, _)) {
+    Error(stop) -> promise.resolve(Error(stop))
+    Ok(CheckHere(check)) ->
+      promise.resolve({
+        use _ <- result.try(run_checks())
+        Error(#(FailedOnlyOnGitHub(check), ""))
+      })
+    Ok(GiveUp) -> promise.resolve(Error(#(FailedAgain(step), "")))
+    Ok(SendAgain) -> {
+      io.println("Publishing failed on GitHub, so it is sent once more.")
+      case git(["commit", "--allow-empty", "--message", again]) {
+        Error(stop) -> promise.resolve(Error(stop))
+        Ok(_) -> {
+          use commit <- promise.try_await(send(repository, tries: 2))
+          deploy(repository, commit)
+        }
+      }
+    }
   }
 }
 
-/// Step 6: the live release once the live site runs `commit` or a later
+/// Steps 7 and 8: the live version, and whether GitHub tagged it, which it
+/// does once the site is live.
+fn go_live(
+  repository: Repository,
+  commit: String,
+) -> Promise(Result(Outcome, Stop)) {
+  io.println("Waiting for the live site to show it.")
+  use release <- promise.try_await(wait_for_live(repository, commit, 0))
+  let tagged = case run("git", ["ls-remote", "--tags", "origin", release]) {
+    Ok(#(0, out, _)) -> string.trim(out) != ""
+    // Not known, so nothing is said about it.
+    _ -> True
+  }
+  promise.resolve(Ok(Live(release:, tagged:)))
+}
+
+/// Step 7: the live release once the live site runs `commit` or a later
 /// commit that contains it.
 fn wait_for_live(
   repository: Repository,
@@ -432,13 +593,21 @@ fn contains(live: String, commit: String) -> Bool {
   }
 }
 
+/// The API path of `path` in this project's repository.
 fn api(repository: Repository, path: String) -> String {
-  "https://api.github.com/repos/"
-  <> repository.owner
-  <> "/"
-  <> repository.name
-  <> "/"
-  <> path
+  "repos/" <> repository.owner <> "/" <> repository.name <> "/" <> path
+}
+
+/// A GitHub API answer as #(HTTP status, body). It asks through `gh api`,
+/// signed in on this computer, and without a sign-in when gh is missing or
+/// not signed in.
+fn ask_github(path: String) -> Promise(Result(#(Int, String), String)) {
+  case run("gh", ["api", path]) {
+    Ok(#(0, body, _)) -> promise.resolve(Ok(#(200, body)))
+    // gh exits 4 when it is not signed in.
+    Ok(#(4, _, _)) | Error(_) -> fetch_text("https://api.github.com/" <> path)
+    Ok(#(_, _, error)) -> promise.resolve(Error(string.trim(error)))
+  }
 }
 
 fn read_answer(
