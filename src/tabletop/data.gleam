@@ -443,16 +443,23 @@ fn save_set(
   ))
 }
 
-/// The zip's file name, when it was imported, and the index, which is an
-/// error when it does not decode.
-fn record_decoder() -> decode.Decoder(#(String, Int, Result(Index, Nil))) {
+/// The zip's file name, when it was imported, and the index. The index is
+/// `None` when it is older than the current version or does not decode, so
+/// that it is built again.
+pub fn record_decoder() -> decode.Decoder(#(String, Int, Option(Index))) {
   use file_name <- decode.field("file_name", decode.string)
   use imported <- decode.field("imported", decode.int)
   use index <- decode.field(
     "index",
-    decode.one_of(decode.map(data_index.decoder(), Ok), [
-      decode.success(Error(Nil)),
-    ]),
+    decode.one_of(
+      decode.map(data_index.decoder(), fn(index) {
+        case index.version >= data_index.current_version {
+          True -> Some(index)
+          False -> None
+        }
+      }),
+      [decode.success(None)],
+    ),
   )
   decode.success(#(file_name, imported, index))
 }
@@ -468,10 +475,9 @@ fn load_sets(db: Database) -> Promise(Result(List(Stored), StorageError)) {
   list.map(records, fn(pair) {
     let #(id, record) = pair
     case record {
-      Ok(#(file_name, imported, Ok(index)))
-        if index.version >= data_index.current_version
-      -> promise.resolve(Current(DataSet(id:, file_name:, imported:, index:)))
-      Ok(#(file_name, imported, _)) -> {
+      Ok(#(file_name, imported, Some(index))) ->
+        promise.resolve(Current(DataSet(id:, file_name:, imported:, index:)))
+      Ok(#(file_name, imported, None)) -> {
         use stored <- promise.map(storage.get_bytes(db, storage.DataZips, id))
         case stored {
           Ok(Some(bytes)) -> Stale(ZipFile(name: file_name, imported:, bytes:))
@@ -1023,8 +1029,9 @@ fn row(to: Route, name: String, under: List(String)) -> Element(Msg) {
   ])
 }
 
-/// The catalogue screen: its roots under their primary category, narrowed by
-/// the filter.
+/// The catalogue screen: the roots that show when nothing is chosen under
+/// their primary category, then the others the same way under a heading of
+/// their own, both narrowed by the filter.
 pub fn catalogue_page(
   state: State,
   set_id: String,
@@ -1040,36 +1047,44 @@ pub fn catalogue_page(
     |> list.filter(fn(root) {
       string.contains(string.lowercase(root.name), filter)
     })
+  let groups = fn(roots, heading: fn(List(Element(Msg))) -> Element(Msg)) {
+    list.map(data_index.by_primary(roots), fn(group) {
+      let #(category, roots) = group
+      html.section([], [
+        heading([
+          html.text(case category {
+            "" -> "Other"
+            category -> category
+          }),
+        ]),
+        html.ul(
+          [attribute.class("rows")],
+          list.map(roots, fn(root: data_index.Root) {
+            html.li([], [
+              row(route.NodePage(set_id, catalogue_id, root.id), root.name, []),
+            ])
+          }),
+        ),
+      ])
+    })
+  }
+  let #(shown, not_shown) = list.partition(roots, fn(root) { root.shown })
   [
     sheet_view.back_link(route.DataSetPage(set_id), set.index.game_system_name),
     html.h1([], [html.text(catalogue.name)]),
     text_box("Filter", hash, typed),
-    ..case roots {
-      [] -> [html.p([attribute.class("note")], [html.text("Nothing found.")])]
-      _ ->
-        list.map(data_index.by_primary(roots), fn(group) {
-          let #(category, roots) = group
+    ..case roots, not_shown {
+      [], _ -> [
+        html.p([attribute.class("note")], [html.text("Nothing found.")]),
+      ]
+      _, [] -> groups(shown, html.h2([], _))
+      _, _ ->
+        list.append(groups(shown, html.h2([], _)), [
           html.section([], [
-            html.h2([], [
-              html.text(case category {
-                "" -> "Other"
-                category -> category
-              }),
-            ]),
-            html.ul(
-              [attribute.class("rows")],
-              list.map(roots, fn(root) {
-                html.li([], [
-                  row(
-                    route.NodePage(set_id, catalogue_id, root.id),
-                    root.name,
-                    [],
-                  ),
-                ])
-              }),
-            ),
-          ])
-        })
+            html.h2([], [html.text("Shown only with some choices")]),
+            ..groups(not_shown, html.h3([], _))
+          ]),
+        ])
     }
   ]
 }

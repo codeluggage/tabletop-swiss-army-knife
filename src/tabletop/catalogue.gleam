@@ -184,15 +184,27 @@ pub type Summary {
 }
 
 /// `primary` is the name of the root's primary category, empty when it has
-/// none.
+/// none. `shown` says whether the root itself shows when nothing is chosen.
 pub type RootSummary {
-  LinkRoot(id: String, name: String, target_id: String, primary: String)
-  EntryRoot(id: String, name: String, kind: EntryKind, primary: String)
+  LinkRoot(
+    id: String,
+    name: String,
+    target_id: String,
+    primary: String,
+    shown: Bool,
+  )
+  EntryRoot(
+    id: String,
+    name: String,
+    kind: EntryKind,
+    primary: String,
+    shown: Bool,
+  )
 }
 
 /// A shared entry, as far as a root that links to it needs to know it.
 pub type SharedSummary {
-  SharedSummary(id: String, kind: EntryKind, primary: String)
+  SharedSummary(id: String, kind: EntryKind, primary: String, shown: Bool)
 }
 
 pub type FileError {
@@ -732,7 +744,8 @@ fn link_root_decoder() -> Decoder(RootSummary) {
   use name <- decode.field("name", decode.string)
   use target_id <- decode.field("targetId", decode.string)
   use primary <- decode.then(primary_decoder())
-  decode.success(LinkRoot(id:, name:, target_id:, primary:))
+  use shown <- decode.then(shown_decoder())
+  decode.success(LinkRoot(id:, name:, target_id:, primary:, shown:))
 }
 
 fn entry_root_decoder() -> Decoder(RootSummary) {
@@ -740,14 +753,24 @@ fn entry_root_decoder() -> Decoder(RootSummary) {
   use name <- decode.field("name", decode.string)
   use kind <- decode.then(kind_decoder())
   use primary <- decode.then(primary_decoder())
-  decode.success(EntryRoot(id:, name:, kind:, primary:))
+  use shown <- decode.then(shown_decoder())
+  decode.success(EntryRoot(id:, name:, kind:, primary:, shown:))
 }
 
 fn shared_decoder() -> Decoder(SharedSummary) {
   use id <- decode.field("id", decode.string)
   use kind <- decode.then(kind_decoder())
   use primary <- decode.then(primary_decoder())
-  decode.success(SharedSummary(id:, kind:, primary:))
+  use shown <- decode.then(shown_decoder())
+  decode.success(SharedSummary(id:, kind:, primary:, shown:))
+}
+
+/// Whether the object shows when nothing is chosen, from its `hidden` and
+/// its modifiers.
+fn shown_decoder() -> Decoder(Bool) {
+  use hidden <- hidden()
+  use modifiers <- decode.then(modifiers_decoder())
+  decode.success(!hidden_by_default(hidden, modifiers))
 }
 
 fn kind_decoder() -> Decoder(EntryKind) {

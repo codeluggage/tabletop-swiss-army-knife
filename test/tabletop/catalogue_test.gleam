@@ -105,7 +105,7 @@ pub fn the_game_system_summarises_test() {
         name: "Picnic Skirmish",
         library: False,
         links: [],
-        roots: [EntryRoot("e-weather", "Weather", Upgrade, "")],
+        roots: [EntryRoot("e-weather", "Weather", Upgrade, "", True)],
         shared: [],
       ),
     )
@@ -248,11 +248,11 @@ pub fn the_library_summarises_test() {
         name: "Pantry",
         library: True,
         links: [],
-        roots: [LinkRoot("l-walker", "Sugar Bowl Walker", "e-walker", "")],
+        roots: [LinkRoot("l-walker", "Sugar Bowl Walker", "e-walker", "", True)],
         shared: [
-          SharedSummary("e-captain", Model, "Leader"),
-          SharedSummary("e-walker", Model, ""),
-          SharedSummary("e-sling", Upgrade, ""),
+          SharedSummary("e-captain", Model, "Leader", True),
+          SharedSummary("e-walker", Model, "", True),
+          SharedSummary("e-sling", Upgrade, "", True),
         ],
       ),
     )
@@ -328,8 +328,8 @@ pub fn the_importing_catalogue_summarises_test() {
       links: [Link("cat-pantry", True)],
       // The link's own primary category.
       roots: [
-        LinkRoot("l-guest-captain", "Kettle Captain", "e-captain", "Line"),
-        EntryRoot("e-brew", "Brew", Upgrade, ""),
+        LinkRoot("l-guest-captain", "Kettle Captain", "e-captain", "Line", True),
+        EntryRoot("e-brew", "Brew", Upgrade, "", True),
       ],
       shared: [],
     ))
@@ -420,10 +420,10 @@ pub fn the_lists_catalogue_summarises_test() {
         library: False,
         links: [Link("cat-crockery", True)],
         roots: [
-          LinkRoot("l-captain", "Kettle Captain", "e-captain", ""),
-          LinkRoot("l-squad", "Teacup Squad", "e-squad", ""),
+          LinkRoot("l-captain", "Kettle Captain", "e-captain", "", True),
+          LinkRoot("l-squad", "Teacup Squad", "e-squad", "", True),
         ],
-        shared: [SharedSummary("e-squad", Unit, "Line")],
+        shared: [SharedSummary("e-squad", Unit, "Line", True)],
       ),
     )
 }
@@ -536,9 +536,34 @@ pub fn the_shallow_read_does_not_walk_into_children_test() {
   assert catalogue.summarise(text)
     == Ok(
       Summary(False, "c", "", False, [], [], [
-        SharedSummary("e", OtherKind(""), ""),
+        SharedSummary("e", OtherKind(""), "", True),
       ]),
     )
+}
+
+pub fn the_shallow_read_records_whether_a_root_shows_test() {
+  let hidden_without_jug =
+    "\"modifiers\": [{\"type\": \"set\", \"field\": \"hidden\", \"value\": true, \"conditions\": [{\"type\": \"lessThan\", \"value\": 1, \"field\": \"selections\", \"scope\": \"roster\", \"childId\": \"e-jug\"}]}]"
+  let shown_again =
+    "\"modifierGroups\": [{\"modifiers\": [{\"type\": \"set\", \"field\": \"hidden\", \"value\": false}]}]"
+  let text =
+    "{\"catalogue\": {\"id\": \"c\", \"entryLinks\": [{\"id\": \"l-jug\", \"name\": \"Jug\", \"targetId\": \"e-jug\"}, {\"id\": \"l-cup\", \"name\": \"Cup\", \"targetId\": \"e-cup\", "
+    <> hidden_without_jug
+    <> "}], \"selectionEntries\": [{\"id\": \"e-mug\", \"name\": \"Mug\"}, {\"id\": \"e-urn\", \"name\": \"Urn\", \"hidden\": true}, {\"id\": \"e-pot\", \"name\": \"Pot\", \"hidden\": true, "
+    <> shown_again
+    <> "}], \"sharedSelectionEntries\": [{\"id\": \"e-jug\", \"name\": \"Jug\", \"hidden\": true}]}}"
+  let assert Ok(summary) = catalogue.summarise(text)
+  assert summary.roots
+    == [
+      LinkRoot("l-jug", "Jug", "e-jug", "", True),
+      // A modifier hides the link when nothing is chosen.
+      LinkRoot("l-cup", "Cup", "e-cup", "", False),
+      EntryRoot("e-mug", "Mug", OtherKind(""), "", True),
+      EntryRoot("e-urn", "Urn", OtherKind(""), "", False),
+      // A modifier in a modifier group shows it again.
+      EntryRoot("e-pot", "Pot", OtherKind(""), "", True),
+    ]
+  assert summary.shared == [SharedSummary("e-jug", OtherKind(""), "", False)]
 }
 
 pub fn a_minimal_file_decodes_test() {

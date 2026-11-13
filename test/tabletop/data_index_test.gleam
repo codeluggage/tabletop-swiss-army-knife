@@ -46,7 +46,7 @@ fn summary(
       name: id,
       library: False,
       links: list.map(links, fn(link) { Link(link.0, link.1) }),
-      roots: list.map(roots, fn(name) { EntryRoot(name, name, Unit, "") }),
+      roots: list.map(roots, fn(name) { EntryRoot(name, name, Unit, "", True) }),
       shared: [],
     ),
   )
@@ -62,7 +62,7 @@ fn system(roots: List(String)) -> #(String, Summary) {
 pub fn the_index_holds_one_summary_per_file_test() {
   assert fixture()
     == Index(
-      version: 1,
+      version: 2,
       game_system_id: "sys-picnic",
       game_system_name: "Picnic Skirmish",
       catalogues: [
@@ -81,8 +81,9 @@ pub fn the_index_holds_one_summary_per_file_test() {
               "e-captain",
               Model,
               "Line",
+              True,
             ),
-            Root("e-brew", "Brew", "", Upgrade, ""),
+            Root("e-brew", "Brew", "", Upgrade, "", True),
           ],
         ),
         CatalogueSummary(
@@ -92,7 +93,9 @@ pub fn the_index_holds_one_summary_per_file_test() {
           game_system: False,
           file: "picnic/pantry.json",
           links: [],
-          roots: [Root("l-walker", "Sugar Bowl Walker", "e-walker", Model, "")],
+          roots: [
+            Root("l-walker", "Sugar Bowl Walker", "e-walker", Model, "", True),
+          ],
         ),
         CatalogueSummary(
           id: "sys-picnic",
@@ -101,7 +104,7 @@ pub fn the_index_holds_one_summary_per_file_test() {
           game_system: True,
           file: "picnic/picnic-system.json",
           links: [],
-          roots: [Root("e-weather", "Weather", "", Upgrade, "")],
+          roots: [Root("e-weather", "Weather", "", Upgrade, "", True)],
         ),
         CatalogueSummary(
           id: "cat-teapot",
@@ -112,37 +115,45 @@ pub fn the_index_holds_one_summary_per_file_test() {
           links: [Link("cat-crockery", True)],
           roots: [
             // Kind and primary category come from a target in another file.
-            Root("l-captain", "Kettle Captain", "e-captain", Model, "Leader"),
-            Root("l-squad", "Teacup Squad", "e-squad", Unit, "Line"),
+            Root(
+              "l-captain",
+              "Kettle Captain",
+              "e-captain",
+              Model,
+              "Leader",
+              True,
+            ),
+            Root("l-squad", "Teacup Squad", "e-squad", Unit, "Line", True),
           ],
         ),
       ],
     )
-  assert data_index.current_version == 1
+  assert data_index.current_version == 2
 }
 
 pub fn a_link_to_nothing_keeps_what_it_has_test() {
   let #(file, lost) = summary("a", [], [])
   let lost =
     Summary(..lost, roots: [
-      LinkRoot("l-1", "One", "gone", ""),
-      LinkRoot("l-2", "Two", "gone", "Line"),
+      LinkRoot("l-1", "One", "gone", "", True),
+      LinkRoot("l-2", "Two", "gone", "Line", True),
     ])
   let assert Ok(index) = data_index.build([system([]), #(file, lost)])
   assert data_index.roots(index, "a")
     == [
-      Root("l-1", "One", "gone", OtherKind(""), ""),
-      Root("l-2", "Two", "gone", OtherKind(""), "Line"),
+      Root("l-1", "One", "gone", OtherKind(""), "", True),
+      Root("l-2", "Two", "gone", OtherKind(""), "Line", True),
     ]
 }
 
 pub fn the_first_file_to_define_a_shared_entry_wins_test() {
   let with_shared = fn(id, kind) {
     let #(file, summary) = summary(id, [], [])
-    #(file, Summary(..summary, shared: [SharedSummary("e-1", kind, id)]))
+    #(file, Summary(..summary, shared: [SharedSummary("e-1", kind, id, True)]))
   }
   let #(file, linking) = summary("c", [], [])
-  let linking = Summary(..linking, roots: [LinkRoot("l-1", "One", "e-1", "")])
+  let linking =
+    Summary(..linking, roots: [LinkRoot("l-1", "One", "e-1", "", True)])
   let assert Ok(index) =
     data_index.build([
       system([]),
@@ -150,7 +161,43 @@ pub fn the_first_file_to_define_a_shared_entry_wins_test() {
       with_shared("b", Upgrade),
       #(file, linking),
     ])
-  assert data_index.roots(index, "c") == [Root("l-1", "One", "e-1", Model, "a")]
+  assert data_index.roots(index, "c")
+    == [Root("l-1", "One", "e-1", Model, "a", True)]
+}
+
+pub fn a_link_root_shows_when_it_and_its_target_show_test() {
+  let #(_, shelf) = summary("shelf", [], [])
+  let shelf =
+    Summary(..shelf, shared: [
+      SharedSummary("e-jug", Model, "", True),
+      SharedSummary("e-urn", Model, "", False),
+    ])
+  let #(_, table) = summary("table", [], [])
+  let table =
+    Summary(..table, roots: [
+      // A link to a target that shows, in another file.
+      LinkRoot("l-jug", "Jug", "e-jug", "", True),
+      // The same target, from a link that a modifier hides.
+      LinkRoot("l-jug-later", "Jug", "e-jug", "", False),
+      // A link that shows, to a target that does not.
+      LinkRoot("l-urn", "Urn", "e-urn", "", True),
+      EntryRoot("e-mug", "Mug", Model, "", True),
+    ])
+  let assert Ok(index) =
+    data_index.build([
+      system([]),
+      #("shelf.json", shelf),
+      #("table.json", table),
+    ])
+  assert list.map(data_index.roots(index, "table"), fn(root) {
+      #(root.id, root.shown)
+    })
+    == [
+      #("l-jug", True),
+      #("l-jug-later", False),
+      #("l-urn", False),
+      #("e-mug", True),
+    ]
 }
 
 pub fn no_game_system_is_an_error_test() {
@@ -180,7 +227,7 @@ pub fn the_index_round_trips_through_json_test() {
   let odd =
     Index(..index, catalogues: [
       CatalogueSummary("c", "C", True, False, "c.json", [Link("d", False)], [
-        Root("r", "R", "t", OtherKind("crew"), ""),
+        Root("r", "R", "t", OtherKind("crew"), "", True),
       ]),
     ])
   assert json.parse(
@@ -243,7 +290,11 @@ pub fn roots_group_by_primary_category_test() {
 
 pub fn search_ignores_case_and_matches_anywhere_test() {
   let brew =
-    Hit("cat-crockery", "Crockery", Root("e-brew", "Brew", "", Upgrade, ""))
+    Hit(
+      "cat-crockery",
+      "Crockery",
+      Root("e-brew", "Brew", "", Upgrade, "", True),
+    )
   assert data_index.search(fixture(), "bRE") == [brew]
   assert data_index.search(fixture(), "ew") == [brew]
   // The game system's roots are searched too.
@@ -252,7 +303,7 @@ pub fn search_ignores_case_and_matches_anywhere_test() {
       Hit(
         "sys-picnic",
         "Picnic Skirmish",
-        Root("e-weather", "Weather", "", Upgrade, ""),
+        Root("e-weather", "Weather", "", Upgrade, "", True),
       ),
     ]
   assert data_index.search(fixture(), "marmalade") == []
@@ -265,7 +316,14 @@ pub fn search_gives_one_hit_per_target_test() {
       Hit(
         "cat-crockery",
         "Crockery",
-        Root("l-guest-captain", "Kettle Captain", "e-captain", Model, "Line"),
+        Root(
+          "l-guest-captain",
+          "Kettle Captain",
+          "e-captain",
+          Model,
+          "Line",
+          True,
+        ),
       ),
     ]
   // Roots without a target are told apart by their own id.
@@ -275,6 +333,31 @@ pub fn search_gives_one_hit_per_target_test() {
       #(hit.catalogue_id, hit.root.id)
     })
     == [#("system", "tea"), #("a", "teapot")]
+}
+
+pub fn search_prefers_the_catalogue_whose_root_is_shown_test() {
+  let owner = fn(id, shown) {
+    let #(file, owner) = summary(id, [], [])
+    #(
+      file,
+      Summary(..owner, roots: [LinkRoot("l-" <> id, "Jug", "e-jug", "", shown)]),
+    )
+  }
+  let owners = fn(index) {
+    list.map(data_index.search(index, "jug"), fn(hit) { hit.catalogue_id })
+  }
+  let assert Ok(index) =
+    data_index.build([
+      system([]),
+      owner("a", False),
+      owner("b", True),
+      owner("c", True),
+    ])
+  assert owners(index) == ["b"]
+  // When no owner's root is shown, the first owner is the hit.
+  let assert Ok(index) =
+    data_index.build([system([]), owner("a", False), owner("b", False)])
+  assert owners(index) == ["a"]
 }
 
 pub fn search_stops_at_fifty_hits_test() {

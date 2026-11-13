@@ -1,4 +1,5 @@
 import gleam/dict
+import gleam/json
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
@@ -151,6 +152,27 @@ pub fn an_older_index_is_built_again_from_its_zip_test() {
   assert state.problem == Some(NotReadAgain)
 }
 
+pub fn a_version_1_record_goes_to_the_rebuild_path_test() {
+  let record = fn(index) {
+    json.object([
+      #("file_name", json.string("picnic.zip")),
+      #("imported", json.int(5)),
+      #("index", index),
+    ])
+    |> json.to_string
+    |> json.parse(data.record_decoder())
+  }
+  let set = picnic_set()
+  assert record(data_index.encode(set.index))
+    == Ok(#("picnic.zip", 5, Some(set.index)))
+  // An index saved at version 1 is built again from its zip, and so is one
+  // that no longer decodes.
+  let old = data_index.Index(..set.index, version: 1)
+  assert record(data_index.encode(old)) == Ok(#("picnic.zip", 5, None))
+  assert record(json.object([#("version", json.int(1))]))
+    == Ok(#("picnic.zip", 5, None))
+}
+
 // --- Opening a node ---------------------------------------------------------
 
 pub fn the_files_to_decode_test() {
@@ -250,6 +272,39 @@ pub fn the_search_box_keeps_its_text_per_screen_test() {
   // The text stays on its own screen.
   let catalogue = render(data.catalogue_page(state, "sys-picnic", "cat-teapot"))
   assert !string.contains(catalogue, "value=\"ke\"")
+}
+
+pub fn roots_shown_only_with_some_choices_come_last_test() {
+  let set = picnic_set()
+  let catalogues =
+    list.map(set.index.catalogues, fn(catalogue) {
+      data_index.CatalogueSummary(
+        ..catalogue,
+        roots: list.map(catalogue.roots, fn(root) {
+          data_index.Root(..root, shown: root.id != "l-squad")
+        }),
+      )
+    })
+  let index = data_index.Index(..set.index, catalogues:)
+  let state =
+    step(data.init(), SetsLoaded(Ok([Current(DataSet(..set, index:))])))
+  let page = render(data.catalogue_page(state, "sys-picnic", "cat-teapot"))
+  let assert [shown, not_shown] =
+    string.split(page, "Shown only with some choices")
+  assert string.contains(shown, "Kettle Captain")
+  assert !string.contains(shown, "Teacup Squad")
+  assert string.contains(not_shown, "<h3>Line</h3>")
+  assert string.contains(not_shown, "Teacup Squad")
+  // The filter narrows both parts.
+  let hash = route.to_hash(route.CataloguePage("sys-picnic", "cat-teapot"))
+  let state = step(state, BoxTyped(hash, "teacup"))
+  let page = render(data.catalogue_page(state, "sys-picnic", "cat-teapot"))
+  assert string.contains(page, "Shown only with some choices")
+  assert string.contains(page, "Teacup Squad")
+  assert !string.contains(page, "Kettle Captain")
+  // With every root shown, there is no such heading.
+  let page = render(data.catalogue_page(loaded(), "sys-picnic", "cat-teapot"))
+  assert !string.contains(page, "Shown only with some choices")
 }
 
 pub fn delete_asks_first_test() {

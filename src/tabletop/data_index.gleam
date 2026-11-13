@@ -17,7 +17,7 @@ import tabletop/catalogue.{
 import tabletop/sheet.{type EntryKind}
 
 /// The version a new index gets. Raise it when the shape of `Index` changes.
-pub const current_version = 1
+pub const current_version = 2
 
 pub type Index {
   Index(
@@ -45,7 +45,7 @@ pub type CatalogueSummary {
 
 /// Something a list can start from. `target_id` is empty when the root is an
 /// entry and not a link. `primary` is the name of its primary category, empty
-/// when it has none.
+/// when it has none. `shown` says whether it shows when nothing is chosen.
 pub type Root {
   Root(
     id: String,
@@ -53,6 +53,7 @@ pub type Root {
     target_id: String,
     kind: EntryKind,
     primary: String,
+    shown: Bool,
   )
 }
 
@@ -105,18 +106,30 @@ pub fn build(files: List(#(String, Summary))) -> Result(Index, IndexError) {
 }
 
 /// A link takes its kind and primary category from the shared entry it
-/// points at, in whichever file that is. Its own primary category wins.
+/// points at, in whichever file that is. Its own primary category wins. It
+/// shows when it and that entry show, or when it shows and no file shares
+/// the entry.
 fn root(root: RootSummary, shared: Dict(String, SharedSummary)) -> Root {
   case root {
-    EntryRoot(id:, name:, kind:, primary:) ->
-      Root(id:, name:, target_id: "", kind:, primary:)
-    LinkRoot(id:, name:, target_id:, primary: own) -> {
-      let #(kind, primary) = case dict.get(shared, target_id), own {
-        Ok(target), "" -> #(target.kind, target.primary)
-        Ok(target), _ -> #(target.kind, own)
-        Error(Nil), _ -> #(sheet.OtherKind(""), own)
+    EntryRoot(id:, name:, kind:, primary:, shown:) ->
+      Root(id:, name:, target_id: "", kind:, primary:, shown:)
+    LinkRoot(id:, name:, target_id:, primary: own, shown:) -> {
+      let #(kind, primary, target_shown) = case
+        dict.get(shared, target_id),
+        own
+      {
+        Ok(target), "" -> #(target.kind, target.primary, target.shown)
+        Ok(target), _ -> #(target.kind, own, target.shown)
+        Error(Nil), _ -> #(sheet.OtherKind(""), own, True)
       }
-      Root(id:, name:, target_id:, kind:, primary:)
+      Root(
+        id:,
+        name:,
+        target_id:,
+        kind:,
+        primary:,
+        shown: shown && target_shown,
+      )
     }
   }
 }
@@ -200,25 +213,34 @@ pub fn by_primary(roots: List(Root)) -> List(#(String, List(Root))) {
 
 /// The roots whose name holds `query`, ignoring case, over the roots each
 /// file defines itself. One hit per target, or per root when it has no
-/// target, 50 hits at most, and none for a query under two characters.
+/// target, 50 hits at most, and none for a query under two characters. Of
+/// the catalogues that own a root for a target, the hit is the first whose
+/// root is shown, or the first when none is.
 pub fn search(index: Index, query: String) -> List(Hit) {
   let query = string.lowercase(query)
   use <- bool.guard(string.length(query) < 2, [])
-  index.catalogues
-  |> list.flat_map(fn(catalogue) {
-    catalogue.roots
-    |> list.filter(fn(root) {
-      string.contains(string.lowercase(root.name), query)
+  let hits =
+    index.catalogues
+    |> list.flat_map(fn(catalogue) {
+      catalogue.roots
+      |> list.filter(fn(root) {
+        string.contains(string.lowercase(root.name), query)
+      })
+      |> list.map(Hit(catalogue.id, catalogue.name, _))
     })
-    |> list.map(Hit(catalogue.id, catalogue.name, _))
-  })
-  |> unique_by(fn(hit) {
+  let target = fn(hit: Hit) {
     case hit.root.target_id {
       "" -> hit.root.id
       target_id -> target_id
     }
-  })
+  }
+  hits
+  |> unique_by(target)
   |> list.take(max_hits)
+  |> list.map(fn(first) {
+    list.find(hits, fn(hit) { hit.root.shown && target(hit) == target(first) })
+    |> result.unwrap(first)
+  })
 }
 
 /// The first item for each key, in order.
@@ -270,6 +292,7 @@ fn encode_catalogue(catalogue: CatalogueSummary) -> Json {
           #("target_id", json.string(root.target_id)),
           #("kind", json.string(kind_to_string(root.kind))),
           #("primary", json.string(root.primary)),
+          #("shown", json.bool(root.shown)),
         ])
       }),
     ),
@@ -330,5 +353,6 @@ fn root_decoder() -> Decoder(Root) {
   use target_id <- decode.field("target_id", decode.string)
   use kind <- decode.field("kind", sheet.entry_kind_decoder())
   use primary <- decode.field("primary", decode.string)
-  decode.success(Root(id:, name:, target_id:, kind:, primary:))
+  use shown <- decode.field("shown", decode.bool)
+  decode.success(Root(id:, name:, target_id:, kind:, primary:, shown:))
 }
