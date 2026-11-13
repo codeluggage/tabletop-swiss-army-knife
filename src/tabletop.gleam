@@ -344,6 +344,10 @@ pub fn view(model: Model) -> Element(Msg) {
       data.catalogue_page(model.data, set_id, catalogue_id) |> data_view
     route.NodePage(set_id:, catalogue_id:, node_id:) ->
       data.node_page(model.data, set_id, catalogue_id, node_id) |> data_view
+    route.CardsPage(..)
+    | route.NewCardPage(..)
+    | route.CardPage(..)
+    | route.ImportCardsPage(..) -> home(model)
   }
   html.main(
     [attribute.class("page")],

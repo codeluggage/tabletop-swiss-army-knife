@@ -1,5 +1,7 @@
+import gleam/list
 import tabletop/route.{
-  CataloguePage, DataSetPage, Home, ListPage, NodePage, RulePage, UnitPage,
+  CardPage, CardsPage, CataloguePage, DataSetPage, Game, Home, ImportCardsPage,
+  ListPage, NewCardPage, Node, NodePage, RulePage, UnitPage,
 }
 
 pub fn parse_reads_each_screen_test() {
@@ -46,6 +48,37 @@ pub fn a_data_id_that_needs_encoding_round_trips_test() {
   assert route.parse(hash) == node
 }
 
+pub fn the_card_screens_round_trip_test() {
+  let game = Game("sys-1")
+  let node = Node("sys-1", "cat-2", "e-3")
+  let screens = [
+    #(CardsPage(game), "#/cards/sys-1"),
+    #(CardsPage(node), "#/cards/sys-1/cat-2/e-3"),
+    #(NewCardPage(game), "#/card/new/sys-1"),
+    #(NewCardPage(node), "#/card/new/sys-1/cat-2/e-3"),
+    #(CardPage("c-4"), "#/card/c-4"),
+    #(ImportCardsPage(game), "#/cards/import/sys-1"),
+    #(ImportCardsPage(node), "#/cards/import/sys-1/cat-2/e-3"),
+  ]
+  assert list.map(screens, fn(screen) { route.to_hash(screen.0) })
+    == list.map(screens, fn(screen) { screen.1 })
+  assert list.map(screens, fn(screen) { route.parse(screen.1) })
+    == list.map(screens, fn(screen) { screen.0 })
+}
+
+pub fn a_place_whose_ids_need_encoding_round_trips_test() {
+  let screens = [
+    CardsPage(Node("import", "cat/2", "e#3?")),
+    CardsPage(Game("import")),
+    NewCardPage(Node("new", "a b", "c")),
+    ImportCardsPage(Game("import")),
+    ImportCardsPage(Node("sys 1", "import", "new")),
+    CardPage("new"),
+  ]
+  assert list.map(screens, fn(screen) { route.parse(route.to_hash(screen)) })
+    == screens
+}
+
 pub fn unknown_hashes_are_home_test() {
   assert route.parse("#/nowhere") == Home
   assert route.parse("#/list") == Home
@@ -56,4 +89,10 @@ pub fn unknown_hashes_are_home_test() {
   assert route.parse("#/list/%E0%A4%A") == Home
   assert route.parse("#/data") == Home
   assert route.parse("#/data/a/b/c/d") == Home
+  assert route.parse("#/cards") == Home
+  assert route.parse("#/cards/a/b") == Home
+  assert route.parse("#/cards/a/b/c/d/e/f") == Home
+  assert route.parse("#/card/a/b") == Home
+  assert route.parse("#/card/new/a/b") == Home
+  assert route.parse("#/card") == Home
 }

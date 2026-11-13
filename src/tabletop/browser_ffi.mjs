@@ -54,6 +54,10 @@ export function current_hash() {
   return location.hash;
 }
 
+export function set_hash(hash) {
+  location.hash = hash;
+}
+
 export function on_hash_change(callback) {
   window.addEventListener("hashchange", () => callback(location.hash));
 }
