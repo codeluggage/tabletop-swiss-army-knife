@@ -299,10 +299,10 @@ pub fn the_home_screen_has_a_backup_section_above_about_test() {
   let home = tabletop.view(model(UpToDate)) |> element.to_string
   let assert [_, after] = string.split(home, "<h2>Backup</h2>")
   assert string.contains(after, "Save a backup file")
-  assert string.contains(after, "Last backup: reading…")
+  assert string.contains(after, "Last backup file made: reading…")
   assert string.contains(after, "<h2>About this device</h2>")
   let #(model, _) =
     tabletop.update(model(UpToDate), BackupMsg(backup.LastLoaded(Ok(None))))
   let home = tabletop.view(model) |> element.to_string
-  assert string.contains(home, "Last backup: never")
+  assert string.contains(home, "Last backup file made: never")
 }

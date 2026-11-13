@@ -6,6 +6,7 @@ import gleam/json
 import gleam/list
 import gleam/option.{None}
 import gleam/string
+import lustre/element
 import simplifile
 import tabletop/backup.{
   Backup, Broken, Made, NotABackup, SomeKeys, Source, TooNew,
@@ -130,6 +131,21 @@ pub fn a_broken_record_breaks_the_backup_test() {
 pub fn the_file_name_is_the_date_test() {
   assert backup.file_name(#(2026, 1, 5)) == "tabletop-backup-2026-01-05.json"
   assert backup.file_name(#(2026, 11, 13)) == "tabletop-backup-2026-11-13.json"
+}
+
+pub fn a_saved_file_says_where_to_look_until_the_screen_changes_test() {
+  let file = "tabletop-backup-2026-11-13.json"
+  let #(state, _) =
+    backup.update(backup.init(), backup.Saved(Ok(#(0, file))), None)
+  let shown = fn(state) {
+    element.fragment(backup.section(state)) |> element.to_string
+  }
+  assert string.contains(shown(state), "Last backup file made: ")
+  assert string.contains(
+    shown(state),
+    "Look for the file " <> file <> " in your downloads",
+  )
+  assert !string.contains(shown(backup.screen_changed(state)), "Look for")
 }
 
 // --- Restoring ----------------------------------------------------------------

@@ -253,6 +253,9 @@ pub type State {
 pub type Save {
   NotSaving
   Saving
+  /// The browser was handed the file with this name. A browser never says
+  /// whether it saved it.
+  Handed(file: String)
   /// No file was made, and why.
   SaveFailed(StorageError)
 }
@@ -279,7 +282,8 @@ pub type Problem {
 pub type Msg {
   LastLoaded(Result(Option(Int), StorageError))
   SaveClicked
-  Saved(Result(Int, StorageError))
+  /// When the file was made, and its name.
+  Saved(Result(#(Int, String), StorageError))
   RestoreClicked
   CancelClicked
   Restored(Result(Nil, StorageError))
@@ -329,8 +333,8 @@ pub fn update(
         // The button is off until storage has answered.
         None -> #(state, effect.none())
       }
-    Saved(Ok(ms)) -> #(
-      State(..state, save: NotSaving, last: Some(Ok(Some(ms)))),
+    Saved(Ok(#(ms, file))) -> #(
+      State(..state, save: Handed(file), last: Some(Ok(Some(ms)))),
       effect.none(),
     )
     Saved(Error(error)) -> #(
@@ -388,7 +392,7 @@ pub fn file_read(state: State, read: Result(Backup, ReadError)) -> State {
 pub fn screen_changed(state: State) -> State {
   let save = case state.save {
     Saving -> Saving
-    NotSaving | SaveFailed(_) -> NotSaving
+    NotSaving | Handed(_) | SaveFailed(_) -> NotSaving
   }
   let restore = case state.restore {
     Writing(_) -> state.restore
@@ -407,8 +411,9 @@ pub fn asking(state: State) -> Bool {
 }
 
 /// Read every store that goes into a backup, keep the time on this device,
-/// then hand the file to the browser. Resolves to that time.
-fn save(db: Database) -> Promise(Result(Int, StorageError)) {
+/// then hand the file to the browser. Resolves to that time and the file's
+/// name.
+fn save(db: Database) -> Promise(Result(#(Int, String), StorageError)) {
   let now = browser.now_ms()
   use stores <- promise.try_await(
     stores()
@@ -434,8 +439,9 @@ fn save(db: Database) -> Promise(Result(Int, StorageError)) {
     last_backup_key,
     json.int(now),
   ))
-  browser.download(file_name(browser.local_date(now)), encode(backup))
-  Ok(now)
+  let file = file_name(browser.local_date(now))
+  browser.download(file, encode(backup))
+  Ok(#(now, file))
 }
 
 // --- Views ------------------------------------------------------------------
@@ -461,11 +467,12 @@ pub fn status(state: State) -> List(Element(Msg)) {
 pub fn section(state: State) -> List(Element(Msg)) {
   let last = case state.save, state.last {
     Saving, _ -> "Making the backup file…"
-    _, None -> "Last backup: reading…"
-    _, Some(Ok(None)) -> "Last backup: never"
-    _, Some(Ok(Some(ms))) -> "Last backup: " <> browser.local_time(ms)
+    _, None -> "Last backup file made: reading…"
+    _, Some(Ok(None)) -> "Last backup file made: never"
+    _, Some(Ok(Some(ms))) -> "Last backup file made: " <> browser.local_time(ms)
     _, Some(Error(error)) ->
-      "Last backup: unknown. " <> sheet_view.describe_storage_error(error)
+      "Last backup file made: unknown. "
+      <> sheet_view.describe_storage_error(error)
   }
   [
     html.section([], [
@@ -490,6 +497,14 @@ pub fn section(state: State) -> List(Element(Msg)) {
         html.text(last),
       ]),
       case state.save {
+        Handed(file) ->
+          html.p([attribute.class("note"), attribute.role("status")], [
+            html.text(
+              "Look for the file "
+              <> file
+              <> " in your downloads, and keep it somewhere safe.",
+            ),
+          ])
         SaveFailed(error) ->
           html.p([attribute.class("problem"), attribute.role("alert")], [
             html.text(
