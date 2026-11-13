@@ -101,11 +101,22 @@ pub fn a_failed_check_on_github_is_checked_here_test() {
   assert publish.retry(Some("Run the tests"), "a change") == CheckHere(Tests)
   assert publish.retry(Some("Build the site"), "publish again")
     == CheckHere(Build)
-  // The step names are the ones GitHub runs.
+}
+
+pub fn every_name_publish_acts_on_is_in_the_workflow_test() {
   let assert Ok(workflow) = simplifile.read(".github/workflows/deploy.yml")
-  list.each(["Check the types", "Run the tests", "Build the site"], fn(step) {
-    assert string.contains(workflow, "name: " <> step) as step
+  let lines = string.split(workflow, "\n")
+  let names =
+    list.filter_map(lines, fn(line) {
+      case string.trim(line) {
+        "- name: " <> name | "name: " <> name -> Ok(name)
+        _ -> Error(Nil)
+      }
+    })
+  list.each(publish.check_steps, fn(step) {
+    assert list.contains(names, step.0) as step.0
   })
+  assert list.contains(lines, "  " <> publish.deploy_job <> ":")
 }
 
 pub fn any_other_failure_is_sent_once_more_test() {

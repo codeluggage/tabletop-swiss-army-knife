@@ -78,6 +78,17 @@ const checks = [
 /// The message of the empty commit that sends the same work once more.
 pub const again = "publish again"
 
+/// The steps of `deploy.yml` that run a check publish can run here, by the
+/// name GitHub gives them. A test reads `deploy.yml` for each name.
+pub const check_steps = [
+  #("Check the types", Types),
+  #("Run the tests", Tests),
+  #("Build the site", Build),
+]
+
+/// The job of `deploy.yml` that puts the site live.
+pub const deploy_job = "deploy"
+
 /// The wait between two questions about the run. Without gh, GitHub answers
 /// 60 questions an hour, and one publish asks at most 32.
 const run_poll_ms = 20_000
@@ -232,14 +243,14 @@ pub type Retry {
 
 /// What to do about a failed run, from the name of the step that failed,
 /// when GitHub said it, and the first line of the message of the commit the
-/// run was for. The step names are the ones in `deploy.yml`.
+/// run was for.
 pub fn retry(step: Option(String), subject: String) -> Retry {
-  case step {
-    Some("Check the types") -> CheckHere(Types)
-    Some("Run the tests") -> CheckHere(Tests)
-    Some("Build the site") -> CheckHere(Build)
-    _ if subject == again -> GiveUp
-    _ -> SendAgain
+  let check =
+    option.to_result(step, Nil) |> result.try(list.key_find(check_steps, _))
+  case check {
+    Ok(check) -> CheckHere(check)
+    Error(Nil) if subject == again -> GiveUp
+    Error(Nil) -> SendAgain
   }
 }
 
@@ -319,7 +330,7 @@ pub fn read_jobs(text: String) -> Result(Failure, Nil) {
   let decoder = decode.at(["jobs"], decode.list(job))
   use jobs <- result.map(json.parse(text, decoder) |> result.replace_error(Nil))
   let deployed =
-    list.any(jobs, fn(job) { job.0 == "deploy" && job.1 == Some("success") })
+    list.any(jobs, fn(job) { job.0 == deploy_job && job.1 == Some("success") })
   let failed_step =
     list.find_map(jobs, fn(job) {
       list.find_map(job.2, fn(step) {
