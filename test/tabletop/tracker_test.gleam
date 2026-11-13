@@ -4,10 +4,12 @@ import gleam/string
 import lustre/element
 import tabletop/score.{Change, Gained, Items, One, Scored, Two}
 import tabletop/score_test
+import tabletop/storage
 import tabletop/tracker.{
-  Confirmed, DeleteClicked, DeleteGame, EditClicked, Edited, EndClicked,
-  GamesLoaded, NewSheetClicked, NoSheet, NoStorage, NotConfirmed, Played,
-  RemoveClicked, RemoveFromSheet, SheetsLoaded, SimpleSubmitted, StartSubmitted,
+  Confirmed, DeleteClicked, DeleteGame, DeleteSheet, DeleteSheetClicked,
+  EditClicked, Edited, EndClicked, GamesLoaded, NewSheetClicked, NoSheet,
+  NoStorage, NotConfirmed, Played, RemoveClicked, RemoveFromSheet, SheetDeleted,
+  SheetNotDeleted, SheetsLoaded, SimpleSubmitted, StartSubmitted,
 }
 
 fn step(state: tracker.State, msg: tracker.Msg) -> tracker.State {
@@ -93,6 +95,36 @@ pub fn removing_asks_first_test() {
   assert removed.confirming == None
   assert list.map(sheet(removed).items, fn(item) { item.name })
     == ["Teacups", "Crumbs"]
+}
+
+pub fn deleting_a_sheet_asks_first_and_games_keep_theirs_test() {
+  let state = started()
+  let html = page(tracker.sheet_page(state, "sheet-picnic"))
+  assert string.contains(html, "Delete this sheet")
+  assert !string.contains(html, "Games already played keep")
+  let asking = step(state, DeleteSheetClicked("sheet-picnic"))
+  assert asking.confirming == Some(DeleteSheet("sheet-picnic"))
+  assert string.contains(
+    page(tracker.sheet_page(asking, "sheet-picnic")),
+    "Delete this sheet? Games already played keep their own copy of it.",
+  )
+  // No keeps the sheet.
+  let kept = step(asking, NotConfirmed)
+  assert kept.confirming == None
+  assert sheet(kept).id == "sheet-picnic"
+  // Storage is closed in a test, so Yes deletes nothing.
+  let answered = step(asking, Confirmed)
+  assert answered.problem == Some(NoStorage)
+  assert sheet(answered).id == "sheet-picnic"
+  // Once the delete is saved the sheet goes, and the game keeps its copy.
+  let deleted = step(asking, SheetDeleted("sheet-picnic", Ok(Nil)))
+  assert deleted.sheets == Some(Ok([]))
+  assert deleted.confirming == None
+  assert game(deleted).sheet == score_test.picnic_sheet()
+  let failed =
+    step(asking, SheetDeleted("sheet-picnic", Error(storage.DeleteFailed("x"))))
+  assert failed.problem == Some(SheetNotDeleted(storage.DeleteFailed("x")))
+  assert sheet(failed).id == "sheet-picnic"
 }
 
 pub fn the_sheets_screen_offers_the_simple_start_test() {

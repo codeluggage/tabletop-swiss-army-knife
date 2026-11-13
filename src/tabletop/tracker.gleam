@@ -48,12 +48,14 @@ pub type State {
 
 pub type Confirm {
   RemoveFromSheet(sheet_id: String, part: Part, index: Int)
+  DeleteSheet(sheet_id: String)
   DeleteGame(game_id: String)
 }
 
 /// What went wrong with the last change.
 pub type Problem {
   NotSaved(StorageError)
+  SheetNotDeleted(StorageError)
   NotDeleted(StorageError)
   NoStorage
   NoSheet
@@ -67,6 +69,7 @@ pub type Msg {
   SimpleSubmitted(fields: List(#(String, String)))
   Edited(sheet_id: String, edit: Edit)
   RemoveClicked(sheet_id: String, part: Part, index: Int)
+  DeleteSheetClicked(sheet_id: String)
   DeleteClicked(game_id: String)
   Confirmed
   NotConfirmed
@@ -79,6 +82,7 @@ pub type Msg {
   EndClicked(game_id: String)
   EditClicked(game_id: String)
   Saved(Result(Nil, StorageError))
+  SheetDeleted(sheet_id: String, result: Result(Nil, StorageError))
   GameDeleted(game_id: String, result: Result(Nil, StorageError))
 }
 
@@ -170,6 +174,10 @@ pub fn update(
       ),
       effect.none(),
     )
+    DeleteSheetClicked(sheet_id:) -> #(
+      State(..state, confirming: Some(DeleteSheet(sheet_id)), problem: None),
+      effect.none(),
+    )
     DeleteClicked(game_id:) -> #(
       State(..state, confirming: Some(DeleteGame(game_id)), problem: None),
       effect.none(),
@@ -183,6 +191,13 @@ pub fn update(
             Edited(sheet_id, score.Remove(part, index)),
             db,
           )
+        Some(DeleteSheet(sheet_id:)), Some(Ok(db)) -> #(
+          state,
+          effects.from_promise(
+            fn() { storage.delete(db, storage.Sheets, sheet_id) },
+            SheetDeleted(sheet_id, _),
+          ),
+        )
         Some(DeleteGame(game_id:)), Some(Ok(db)) -> #(
           state,
           effects.from_promise(
@@ -190,7 +205,7 @@ pub fn update(
             GameDeleted(game_id, _),
           ),
         )
-        Some(DeleteGame(..)), _ -> #(
+        Some(DeleteSheet(..)), _ | Some(DeleteGame(..)), _ -> #(
           State(..state, confirming: None, problem: Some(NoStorage)),
           effect.none(),
         )
@@ -246,6 +261,20 @@ pub fn update(
       }
     Saved(Error(error)) -> #(
       State(..state, problem: Some(NotSaved(error))),
+      effect.none(),
+    )
+    // Games keep their own copy of the sheet, so they stay as they are.
+    SheetDeleted(sheet_id:, result: Ok(Nil)) -> {
+      let sheets =
+        list.filter(saved_sheets(state), fn(sheet) { sheet.id != sheet_id })
+      #(
+        State(..state, confirming: None, sheets: Some(Ok(sheets))),
+        effect.none(),
+      )
+      |> then_go(route.SheetsPage)
+    }
+    SheetDeleted(result: Error(error), ..) -> #(
+      State(..state, confirming: None, problem: Some(SheetNotDeleted(error))),
       effect.none(),
     )
     GameDeleted(game_id:, result: Ok(Nil)) -> {
@@ -637,7 +666,8 @@ fn text_field(
   ])
 }
 
-/// One sheet's screen: every field, each saved when it changes.
+/// One sheet's screen: every field, each saved when it changes, then
+/// "Delete this sheet", which asks first.
 pub fn sheet_page(state: State, sheet_id: String) -> List(Element(Msg)) {
   case state.sheets {
     None -> [note("Opening…")]
@@ -789,6 +819,14 @@ fn sheet_editor(state: State, sheet: Sheet) -> List(Element(Msg)) {
     ]),
     html.div([attribute.class("actions")], [
       button("Add a result", "button", edited(score.AddResult)),
+    ]),
+    html.div([attribute.class("actions")], [
+      ask(
+        "Delete this sheet? Games already played keep their own copy of it.",
+        "Delete this sheet",
+        state.confirming == Some(DeleteSheet(sheet.id)),
+        DeleteSheetClicked(sheet.id),
+      ),
     ]),
   ]
 }
@@ -1400,6 +1438,9 @@ fn describe_problem(problem: Problem) -> String {
   case problem {
     NotSaved(error) ->
       "The last change could not be saved. "
+      <> sheet_view.describe_storage_error(error)
+    SheetNotDeleted(error) ->
+      "The score sheet could not be deleted. "
       <> sheet_view.describe_storage_error(error)
     NotDeleted(error) ->
       "The game could not be deleted. "
