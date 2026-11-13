@@ -43,23 +43,61 @@ Keep the project in `C:\src\tabletop`. A folder that OneDrive syncs, such as Doc
 4. When Codex asks if you trust this project, say yes.
 5. Open "Review hooks" and trust the two hooks. They run the checks after each change.
 
-## 4. Make your first change
+## 4. Set up how Codex talks to you
+
+Paste each of these two texts once.
+
+For Codex: open Codex's Settings, go to Personalization, and paste this into your personal instructions:
+
+> When I ask you to change one of my apps or websites, I mean: make the change and make it live at the usual address. Follow the project's own instructions for checks and publishing. Do any testing yourself. When the change is live, tell me in plain words what changed, the version I should see, and where to look. If you need me to approve something or decide something, tell me exactly what to do. If I say "what do you think?" or "show me an idea", only talk.
+
+For ChatGPT: in ChatGPT's settings, look for custom instructions, and paste this:
+
+> I describe changes to my app in everyday words, and I usually try them on my phone. Help me say what I see, what I want to happen, and where to look for the result. Use plain language, and give me one next step when I need to do something.
+
+## 5. Make your first change
 
 Type this to Codex, with your own name for the app:
 
-> Change the app's name from "Tabletop" to "My Name Here". Then check, test, commit and push.
+> Change the app's name from "Tabletop" to "My Name Here".
 
-Codex changes the files, runs the checks, and asks you before it pushes. After the push, GitHub checks and builds the site. You can watch it under "Actions" on the project's GitHub page. When the build is green, the app on your phone shows "New version - Reload".
+Codex makes the change and publishes it. This takes a few minutes. Its reply says which version is live, such as "Version 2026.11.13.1542 is live."
+
+Open the app. If a bar says "New version", tap Reload. Check that the version at the top of the screen is the same.
+
+## 6. Then undo it
+
+Type this to Codex:
+
+> Put the name back the way it was.
+
+A new version comes, with the old name. Check it the same way.
+
+## From your phone
+
+You can write to Codex from the ChatGPT app on your phone. The PC must be on, awake and online, with the ChatGPT desktop app running.
+
+Connect your phone once: in the ChatGPT desktop app, open Settings, then Connections, then "Control this Mac or PC", and follow the steps.
+
+## Versions
+
+The app shows its version at the top of every screen, such as 2026.11.13.1542. It is the date and time of the change, on the UK clock. You can name a version by its last four digits: "I'm on 1542 and the weapon table still scrolls sideways."
 
 ## How it stays safe
 
-- Every change runs the type check and the tests. A red build publishes nothing, so the live app keeps working.
+- Every change is checked before it goes live. A failed check publishes nothing, so the app keeps working.
 - The project holds no game content: no rules text, stats, points or names. Your game data stays in your browser on your device. If you ask Codex to put game content into the code, it builds a screen where you add it yourself instead.
-- If Codex shows an error, ask it to fix the error. If you are stuck, send Matias a message.
-- If Codex says you reached a usage limit, wait and try again later.
+- A backup file for your data comes soon.
 
 ## Good ways to ask
 
 - Ask for one change at a time.
 - Say what you see and what you want: "On the unit screen, the weapon table is too wide on my phone. Make it fit."
-- Ask Codex to explain what it changed, in plain words.
+- Say which version you are on.
+- "What do you think?" gets an answer and no change.
+
+## If something goes wrong
+
+- If Codex shows an error, ask it to fix the error.
+- If Codex says to ask the person who helps with the project, send Matias its last message.
+- If Codex says you reached a usage limit, wait and try again later.
