@@ -7,7 +7,8 @@ server: everything you save stays in your browser on that device.
 Tabletop is unofficial. It is not made, endorsed or supported by any game
 publisher, and it is tied to none.
 
-It ships with no game data. Each person loads their own.
+It ships with no game data. Each person loads their own. Game data comes in as
+one zip file of data files that you bring yourself.
 
 ## Run it yourself
 
