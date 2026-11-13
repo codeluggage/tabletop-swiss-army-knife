@@ -261,6 +261,8 @@ pub fn view(model: Model) -> Element(Msg) {
       lists.unit_page(model.lists, list_id, unit_id) |> lists_view
     route.RulePage(list_id:, rule_name:) ->
       lists.rule_page(model.lists, list_id, rule_name) |> lists_view
+    route.DataSetPage(..) | route.CataloguePage(..) | route.NodePage(..) ->
+      home(model)
   }
   html.main(
     [attribute.class("page")],

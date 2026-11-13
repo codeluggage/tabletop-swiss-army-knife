@@ -15,6 +15,12 @@ pub type Route {
   UnitPage(list_id: String, unit_id: String)
   /// `#/list/<list id>/rule/<rule name>`
   RulePage(list_id: String, rule_name: String)
+  /// `#/data/<set id>`: one data set.
+  DataSetPage(set_id: String)
+  /// `#/data/<set id>/<catalogue id>`
+  CataloguePage(set_id: String, catalogue_id: String)
+  /// `#/data/<set id>/<catalogue id>/<node id>`
+  NodePage(set_id: String, catalogue_id: String, node_id: String)
 }
 
 /// The route for a `location.hash`. Anything unknown is `Home`.
@@ -36,6 +42,10 @@ pub fn parse(hash: String) -> Route {
     Ok(["list", list_id]) -> ListPage(list_id:)
     Ok(["list", list_id, "unit", unit_id]) -> UnitPage(list_id:, unit_id:)
     Ok(["list", list_id, "rule", rule_name]) -> RulePage(list_id:, rule_name:)
+    Ok(["data", set_id]) -> DataSetPage(set_id:)
+    Ok(["data", set_id, catalogue_id]) -> CataloguePage(set_id:, catalogue_id:)
+    Ok(["data", set_id, catalogue_id, node_id]) ->
+      NodePage(set_id:, catalogue_id:, node_id:)
     _ -> Home
   }
 }
@@ -46,6 +56,14 @@ pub fn to_hash(route: Route) -> String {
     ListPage(list_id:) -> ["list", list_id]
     UnitPage(list_id:, unit_id:) -> ["list", list_id, "unit", unit_id]
     RulePage(list_id:, rule_name:) -> ["list", list_id, "rule", rule_name]
+    DataSetPage(set_id:) -> ["data", set_id]
+    CataloguePage(set_id:, catalogue_id:) -> ["data", set_id, catalogue_id]
+    NodePage(set_id:, catalogue_id:, node_id:) -> [
+      "data",
+      set_id,
+      catalogue_id,
+      node_id,
+    ]
   }
   "#/" <> { list.map(parts, uri.percent_encode) |> string.join("/") }
 }
