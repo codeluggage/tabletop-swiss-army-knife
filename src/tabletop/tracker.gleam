@@ -952,8 +952,11 @@ fn number_field(
   input_field(id, label, "number", int.to_string(value), on_number(changed))
 }
 
+/// Saves on every key, not when the box loses focus: a screen change without
+/// a tap elsewhere, such as the phone's back gesture, never loses a number.
+/// An empty box sends nothing, so the last whole number stays.
 fn on_number(changed: fn(Int) -> msg) -> Attribute(msg) {
-  event.on("change", {
+  event.on("input", {
     use text <- decode.subfield(["target", "value"], decode.string)
     case int.parse(string.trim(text)) {
       Ok(number) -> decode.success(changed(number))
@@ -1157,7 +1160,7 @@ fn game_view(state: State, game: Game) -> List(Element(Msg)) {
             [
               attribute.id("game-note"),
               attribute.rows(3),
-              event.on_change(fn(text) { played(score.Note(text)) }),
+              event.on_input(fn(text) { played(score.Note(text)) }),
             ],
             game.note,
           ),
