@@ -1,18 +1,18 @@
-//// Tabletop: the screens and the start-up work behind them. Opens storage,
-//// asks the browser to keep it, records the first visit, loads the saved
-//// lists, follows the screen in the URL hash, and offers a reload when a
-//// newer build is out.
+//// Tabletop: the shell around the features. Opens storage, asks the browser
+//// to keep it, records the first visit, follows the screen in the URL hash,
+//// reads a chosen file, and offers a reload when a newer build is out. Each
+//// feature keeps its own state, messages and screens in its own module, and
+//// the shell sends it the routes it owns. The list feature is
+//// `tabletop/lists`.
 
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
-import gleam/int
 import gleam/javascript/promise.{type Promise}
 import gleam/json
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
-import gleam/string
 import lustre
 import lustre/attribute
 import lustre/effect.{type Effect}
@@ -20,12 +20,10 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import tabletop/browser
-import tabletop/roster.{type Roster, type Selection}
+import tabletop/lists
 import tabletop/route.{type Route}
-import tabletop/sheet
 import tabletop/sheet_view
 import tabletop/storage.{type Database, type Persistence, type StorageError}
-import tabletop/text
 import tabletop/version
 
 pub fn main() -> Nil {
@@ -49,28 +47,11 @@ pub type Model {
     storage: Option(Result(Database, StorageError)),
     persistence: Option(Persistence),
     first_opened: Option(Result(Int, StorageError)),
-    lists: Option(Result(List(Saved), StorageError)),
-    problem: Option(Problem),
-    /// The id of the list whose Delete was pressed and waits for Yes or No.
-    confirming: Option(String),
+    lists: lists.State,
     /// How far down each screen was when it was left, keyed by its hash.
     scroll: Dict(String, Float),
     update: Update,
   )
-}
-
-/// A saved list. `roster` is an error when its file no longer decodes.
-pub type Saved {
-  Saved(id: String, name: String, imported: Int, roster: Result(Roster, Nil))
-}
-
-/// What went wrong with the last import or delete.
-pub type Problem {
-  FileNotRead(reason: String)
-  NotAList(roster.FileError)
-  NotSaved(StorageError)
-  NotDeleted(StorageError)
-  NoStorage
 }
 
 pub type Update {
@@ -82,7 +63,6 @@ pub type Update {
 pub type Msg {
   StorageOpened(Result(Database, StorageError))
   FirstOpenedLoaded(Result(Int, StorageError))
-  ListsLoaded(Result(List(Saved), StorageError))
   PersistAnswered(Persistence)
   VersionFetched(Result(String, String))
   VisibilityChanged(String)
@@ -90,14 +70,9 @@ pub type Msg {
   WorkerActivated(Bool)
   ControllerChanged
   HashChanged(hash: String, left_at: Float)
-  BackClicked
   FileChosen(input: Dynamic)
   FileRead(Result(#(String, String), String))
-  ListSaved(Result(Saved, StorageError))
-  DeleteClicked(id: String)
-  DeleteCancelled
-  DeleteConfirmed(id: String)
-  ListDeleted(id: String, result: Result(Nil, StorageError))
+  ListsMsg(lists.Msg)
 }
 
 const first_opened_key = "first_opened"
@@ -110,9 +85,7 @@ pub fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       storage: None,
       persistence: None,
       first_opened: None,
-      lists: None,
-      problem: None,
-      confirming: None,
+      lists: lists.init(),
       scroll: dict.new(),
       update: UpToDate,
     )
@@ -133,7 +106,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       Model(..model, storage: Some(Ok(db))),
       effect.batch([
         from_promise(fn() { load_first_opened(db) }, FirstOpenedLoaded),
-        from_promise(fn() { load_lists(db) }, ListsLoaded),
+        lists.load(Ok(db)) |> effect.map(ListsMsg),
       ]),
     )
     StorageOpened(Error(error)) -> #(
@@ -141,15 +114,13 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         ..model,
         storage: Some(Error(error)),
         first_opened: Some(Error(error)),
-        lists: Some(Error(error)),
       ),
-      effect.none(),
+      lists.load(Error(error)) |> effect.map(ListsMsg),
     )
     FirstOpenedLoaded(result) -> #(
       Model(..model, first_opened: Some(result)),
       effect.none(),
     )
-    ListsLoaded(lists) -> #(Model(..model, lists: Some(lists)), effect.none())
     PersistAnswered(answer) -> #(
       Model(..model, persistence: Some(answer)),
       effect.none(),
@@ -183,79 +154,37 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       let next = route.parse(hash)
       let top = dict.get(scroll, route.to_hash(next)) |> result.unwrap(0.0)
       #(
-        Model(..model, route: next, scroll:, confirming: None, problem: None),
+        Model(
+          ..model,
+          route: next,
+          scroll:,
+          lists: lists.screen_changed(model.lists),
+        ),
         scroll_to(top),
       )
     }
-    BackClicked -> #(model, {
-      use _ <- effect.from
-      browser.history_back()
-    })
     FileChosen(input:) -> #(
-      Model(..model, problem: None),
+      Model(..model, lists: lists.file_chosen(model.lists)),
       from_promise(fn() { browser.read_chosen_file(input) }, FileRead),
     )
     FileRead(Error(reason)) -> #(
-      Model(..model, problem: Some(FileNotRead(reason))),
+      Model(..model, lists: lists.file_not_read(model.lists, reason)),
       effect.none(),
     )
     FileRead(Ok(#(file_name, text))) ->
-      case roster.decode(text), model.storage {
-        Error(error), _ -> #(
-          Model(..model, problem: Some(NotAList(error))),
-          effect.none(),
-        )
-        Ok(decoded), Some(Ok(db)) -> #(
-          model,
-          from_promise(
-            fn() { save_list(db, file_name, text, decoded) },
-            ListSaved,
-          ),
-        )
-        Ok(_), _ -> #(Model(..model, problem: Some(NoStorage)), effect.none())
-      }
-    ListSaved(Ok(saved)) -> #(
-      Model(..model, lists: Some(Ok([saved, ..saved_lists(model)]))),
-      effect.none(),
-    )
-    ListSaved(Error(error)) -> #(
-      Model(..model, problem: Some(NotSaved(error))),
-      effect.none(),
-    )
-    DeleteClicked(id:) -> #(
-      Model(..model, confirming: Some(id), problem: None),
-      effect.none(),
-    )
-    DeleteCancelled -> #(Model(..model, confirming: None), effect.none())
-    DeleteConfirmed(id:) ->
-      case model.storage {
-        Some(Ok(db)) -> #(
-          model,
-          from_promise(fn() { storage.delete(db, storage.Lists, id) }, fn(done) {
-            ListDeleted(id:, result: done)
-          }),
-        )
-        _ -> #(
-          Model(..model, confirming: None, problem: Some(NoStorage)),
-          effect.none(),
-        )
-      }
-    ListDeleted(id:, result: Ok(Nil)) -> {
-      let lists = list.filter(saved_lists(model), fn(saved) { saved.id != id })
-      #(Model(..model, confirming: None, lists: Some(Ok(lists))), effect.none())
-    }
-    ListDeleted(result: Error(error), ..) -> #(
-      Model(..model, confirming: None, problem: Some(NotDeleted(error))),
-      effect.none(),
-    )
+      lists.import_file(model.lists, model.storage, file_name, text)
+      |> from_lists(model)
+    ListsMsg(msg) ->
+      lists.update(model.lists, msg, model.storage) |> from_lists(model)
   }
 }
 
-fn saved_lists(model: Model) -> List(Saved) {
-  case model.lists {
-    Some(Ok(lists)) -> lists
-    Some(Error(_)) | None -> []
-  }
+/// The list feature's new state into the model, its effect into the app's.
+fn from_lists(
+  step: #(lists.State, Effect(lists.Msg)),
+  model: Model,
+) -> #(Model, Effect(Msg)) {
+  #(Model(..model, lists: step.0), effect.map(step.1, ListsMsg))
 }
 
 fn update_after_fetch(model: Model, fetched: Result(String, String)) -> Update {
@@ -290,61 +219,6 @@ fn load_first_opened(db: Database) -> Promise(Result(Int, StorageError)) {
       |> promise.map(result.replace(_, now))
     }
   }
-}
-
-/// A saved list is stored as its name, when it was imported, and the file's
-/// full text, unchanged, so a later version can read more from the same file.
-fn record_decoder() -> decode.Decoder(#(String, Int, String)) {
-  use name <- decode.field("name", decode.string)
-  use imported <- decode.field("imported", decode.int)
-  use file <- decode.field("file", decode.string)
-  decode.success(#(name, imported, file))
-}
-
-fn load_lists(db: Database) -> Promise(Result(List(Saved), StorageError)) {
-  use records <- promise.map(storage.get_all(
-    db,
-    storage.Lists,
-    record_decoder(),
-  ))
-  use records <- result.map(records)
-  use #(id, record) <- list.map(records)
-  case record {
-    Ok(#(name, imported, file)) ->
-      Saved(
-        id:,
-        name:,
-        imported:,
-        roster: roster.decode(file) |> result.replace_error(Nil),
-      )
-    Error(_) -> Saved(id:, name: "", imported: 0, roster: Error(Nil))
-  }
-}
-
-/// The list's own name, or the file's name when the list has none.
-fn save_list(
-  db: Database,
-  file_name: String,
-  text: String,
-  decoded: Roster,
-) -> Promise(Result(Saved, StorageError)) {
-  let id = browser.random_id()
-  let imported = browser.now_ms()
-  let name = case string.trim(decoded.name) {
-    "" -> file_name
-    _ -> decoded.name
-  }
-  let record =
-    json.object([
-      #("name", json.string(name)),
-      #("imported", json.int(imported)),
-      #("file", json.string(text)),
-    ])
-  storage.put(db, storage.Lists, id, record)
-  |> promise.map(result.replace(
-    _,
-    Saved(id:, name:, imported:, roster: Ok(decoded)),
-  ))
 }
 
 fn from_promise(run: fn() -> Promise(a), to_msg: fn(a) -> Msg) -> Effect(Msg) {
@@ -383,15 +257,12 @@ fn reload() -> Effect(Msg) {
 pub fn view(model: Model) -> Element(Msg) {
   let page = case model.route {
     route.Home -> home(model)
-    route.ListPage(list_id:) -> with_list(model, list_id, list_page)
+    route.ListPage(list_id:) ->
+      lists.list_page(model.lists, list_id) |> lists_view
     route.UnitPage(list_id:, unit_id:) ->
-      with_list(model, list_id, fn(saved, decoded) {
-        unit_page(saved, decoded, unit_id)
-      })
+      lists.unit_page(model.lists, list_id, unit_id) |> lists_view
     route.RulePage(list_id:, rule_name:) ->
-      with_list(model, list_id, fn(saved, decoded) {
-        rule_page(saved, decoded, rule_name)
-      })
+      lists.rule_page(model.lists, list_id, rule_name) |> lists_view
   }
   html.main(
     [attribute.class("page")],
@@ -399,348 +270,49 @@ pub fn view(model: Model) -> Element(Msg) {
   )
 }
 
+fn lists_view(elements: List(Element(lists.Msg))) -> List(Element(Msg)) {
+  list.map(elements, element.map(_, ListsMsg))
+}
+
 fn home(model: Model) -> List(Element(Msg)) {
-  [
-    html.h1([], [html.text("Tabletop")]),
-    html.div([attribute.class("import")], [
-      html.input([
-        attribute.type_("file"),
-        attribute.id("import-file"),
-        attribute.class("visually-hidden"),
-        attribute.accept([".json", "application/json"]),
-        event.on(
-          "change",
-          decode.at(["target"], decode.dynamic) |> decode.map(FileChosen),
-        ),
-      ]),
-      html.label([attribute.for("import-file"), attribute.class("button big")], [
-        html.text("Import a list"),
-      ]),
-    ]),
-    case model.problem {
-      None -> element.none()
-      Some(problem) ->
-        html.p([attribute.class("problem"), attribute.role("alert")], [
-          html.text(describe_problem(problem)),
-        ])
-    },
-    saved_lists_view(model),
-    html.section([attribute.class("about")], [
-      html.h2([], [html.text("About this device")]),
-      html.dl([], [
-        fact("Version", model.running),
-        fact("Storage", storage_label(model.storage)),
-        fact("Persistent storage", persistence_label(model.persistence)),
-        fact(
-          "First opened on this device",
-          first_opened_label(model.first_opened),
-        ),
-      ]),
-    ]),
-  ]
-}
-
-fn saved_lists_view(model: Model) -> Element(Msg) {
-  case model.lists {
-    None -> html.p([attribute.class("note")], [html.text("Opening the lists…")])
-    Some(Error(error)) ->
-      html.p([attribute.class("note")], [
-        html.text("The saved lists could not be read. " <> describe(error)),
-      ])
-    Some(Ok([])) ->
-      html.p([attribute.class("note")], [
-        html.text(
-          "No lists yet. Export a list as a JSON file from your list builder, then import it here.",
-        ),
-      ])
-    Some(Ok(lists)) ->
-      html.ul(
-        [attribute.class("rows")],
-        lists
-          |> list.sort(fn(a, b) { int.compare(b.imported, a.imported) })
-          |> list.map(fn(saved) {
-            saved_row(saved, model.confirming == Some(saved.id))
-          }),
-      )
-  }
-}
-
-fn saved_row(saved: Saved, confirming: Bool) -> Element(Msg) {
-  let name = html.span([attribute.class("name")], [html.text(title(saved))])
-  let summary = case saved.roster {
-    Ok(decoded) ->
-      html.a(
-        [
-          attribute.class("row-link"),
-          attribute.href(route.to_hash(route.ListPage(saved.id))),
-        ],
-        [
-          name,
-          sheet_view.meta(sheet.format_costs(roster.totals(decoded))),
-          sheet_view.meta("Imported " <> browser.local_time(saved.imported)),
-        ],
-      )
-    Error(Nil) ->
-      html.div([attribute.class("row-link")], [
-        name,
-        sheet_view.meta("This list could not be read"),
-      ])
-  }
-  let delete = case confirming {
-    False ->
-      html.button(
-        [
-          attribute.type_("button"),
-          attribute.class("button quiet"),
-          event.on_click(DeleteClicked(saved.id)),
-        ],
-        [html.text("Delete")],
-      )
-    True ->
-      html.div([attribute.class("confirm"), attribute.role("group")], [
-        html.span([], [html.text("Delete this list?")]),
-        html.button(
-          [
-            attribute.type_("button"),
-            attribute.class("button danger"),
-            event.on_click(DeleteConfirmed(saved.id)),
-          ],
-          [html.text("Yes")],
-        ),
-        html.button(
-          [
-            attribute.type_("button"),
-            attribute.class("button"),
-            attribute.autofocus(True),
-            event.on_click(DeleteCancelled),
-          ],
-          [html.text("No")],
-        ),
-      ])
-  }
-  html.li([attribute.class("saved")], [summary, delete])
-}
-
-/// The page for one saved list, or a plain message when it is not there.
-fn with_list(
-  model: Model,
-  list_id: String,
-  render: fn(Saved, Roster) -> List(Element(Msg)),
-) -> List(Element(Msg)) {
-  case model.lists {
-    None -> [html.p([attribute.class("note")], [html.text("Opening…")])]
-    Some(Error(error)) ->
-      sheet_view.not_found(
-        "The saved lists could not be read. " <> describe(error),
-      )
-    Some(Ok(lists)) ->
-      case list.find(lists, fn(saved) { saved.id == list_id }) {
-        Error(Nil) -> sheet_view.not_found("This list is not on this device.")
-        Ok(Saved(roster: Error(Nil), ..)) ->
-          sheet_view.not_found("This list could not be read.")
-        Ok(Saved(roster: Ok(decoded), ..) as saved) -> render(saved, decoded)
-      }
-  }
-}
-
-fn list_page(saved: Saved, decoded: Roster) -> List(Element(Msg)) {
-  let titled = list.length(decoded.forces) > 1
-  [
-    sheet_view.back_link(route.Home, "All lists"),
-    html.h1([], [html.text(title(saved))]),
-    sheet_view.costs(roster.totals(decoded)),
-    ..list.map(decoded.forces, force_section(saved.id, _, titled))
-  ]
-}
-
-fn force_section(
-  list_id: String,
-  force: roster.Force,
-  titled: Bool,
-) -> Element(Msg) {
-  let #(title, heading) = case titled {
-    True -> #(
-      html.h2([], [
-        html.text(force.name),
-        html.small([], [html.text(force.catalogue_name)]),
-      ]),
-      html.h3,
-    )
-    False -> #(element.none(), html.h2)
-  }
-  let settings = case roster.settings(force) {
-    [] -> element.none()
-    settings ->
-      html.ul(
-        [attribute.class("settings")],
-        list.map(settings, fn(setting) {
-          let values = list.map(setting.selections, fn(value) { value.name })
-          html.li([], [
-            html.span([attribute.class("setting-name")], [
-              html.text(setting.name),
-            ]),
-            html.text(case values {
-              [] -> ""
-              _ -> ": " <> string.join(values, ", ")
-            }),
-          ])
-        }),
-      )
-  }
-  let rules =
-    sheet_view.rule_chips(
-      list.filter(force.rules, fn(rule) { !rule.hidden }),
-      rule_chip_href(list_id, _),
-      heading,
-    )
-  let units =
-    roster.by_primary_category(roster.units(force))
-    |> list.map(fn(group) {
-      let #(category, units) = group
-      html.section([], [
-        heading([], [html.text(option.unwrap(category, "Other"))]),
-        html.ul(
-          [attribute.class("rows")],
-          list.map(units, unit_row(list_id, _)),
-        ),
-      ])
-    })
-  html.section([attribute.class("force")], [title, settings, rules, ..units])
-}
-
-fn unit_row(list_id: String, unit: Selection) -> Element(Msg) {
-  html.li([], [
-    html.a(
-      [
-        attribute.class("row-link"),
-        attribute.href(route.to_hash(route.UnitPage(list_id, unit.id))),
-      ],
-      [
-        html.span([attribute.class("name")], [html.text(unit.name)]),
-        sheet_view.meta(sheet.format_costs(roster.unit_costs(unit))),
-      ],
-    ),
-  ])
-}
-
-fn unit_page(
-  saved: Saved,
-  decoded: Roster,
-  unit_id: String,
-) -> List(Element(Msg)) {
-  case roster.find_unit(decoded, unit_id) {
-    Error(Nil) -> sheet_view.not_found("This unit is not in this list.")
-    Ok(unit) -> {
-      let href = rule_href(saved.id, _)
-      let text = sheet_view.rich_text(_, rule_links(decoded), href)
-      let keywords = list.map(unit.categories, fn(category) { category.name })
-      list.flatten([
-        [
-          sheet_view.back_link(route.ListPage(saved.id), title(saved)),
-          html.h1([], [html.text(unit.name)]),
-          sheet_view.costs(roster.unit_costs(unit)),
-        ],
-        list.map(
-          sheet.profile_groups(roster.unit_profiles(unit)),
-          sheet_view.profile_group(_, text),
-        ),
-        [
-          sheet_view.rule_chips(
-            roster.unit_rules(unit),
-            rule_chip_href(saved.id, _),
-            html.h2,
+  list.flatten([
+    [
+      html.h1([], [html.text("Tabletop")]),
+      html.div([attribute.class("import")], [
+        html.input([
+          attribute.type_("file"),
+          attribute.id("import-file"),
+          attribute.class("visually-hidden"),
+          attribute.accept([".json", "application/json"]),
+          event.on(
+            "change",
+            decode.at(["target"], decode.dynamic) |> decode.map(FileChosen),
           ),
-          case keywords {
-            [] -> element.none()
-            _ ->
-              html.section([], [
-                html.h2([], [html.text("Keywords")]),
-                html.p([attribute.class("keywords")], [
-                  html.text(string.join(keywords, ", ")),
-                ]),
-              ])
-          },
-          case unit.selections {
-            [] -> element.none()
-            children ->
-              html.section([], [
-                html.h2([], [html.text("Includes")]),
-                includes(children),
-              ])
-          },
-        ],
-      ])
-    }
-  }
-}
-
-fn includes(selections: List(Selection)) -> Element(Msg) {
-  html.ul(
-    [attribute.class("includes")],
-    list.map(selections, fn(selection) {
-      let label = case selection.number > 1 {
-        True -> int.to_string(selection.number) <> "× " <> selection.name
-        False -> selection.name
-      }
-      html.li([], [
-        html.text(label),
-        case selection.selections {
-          [] -> element.none()
-          children -> includes(children)
-        },
-      ])
-    }),
-  )
-}
-
-fn rule_page(
-  saved: Saved,
-  decoded: Roster,
-  rule_name: String,
-) -> List(Element(Msg)) {
-  case roster.find_rule(decoded, rule_name) {
-    Error(Nil) -> sheet_view.not_found("This rule is not in this list.")
-    Ok(rule) -> {
-      let href = rule_href(saved.id, _)
-      [
-        html.button(
+        ]),
+        html.label(
+          [attribute.for("import-file"), attribute.class("button big")],
           [
-            attribute.type_("button"),
-            attribute.class("back"),
-            event.on_click(BackClicked),
+            html.text("Import a list"),
           ],
-          [sheet_view.arrow(), html.text("Back")],
         ),
-        html.h1([], [html.text(rule.name)]),
-        html.div(
-          [attribute.class("prose")],
-          sheet_view.rich_text(rule.description, rule_links(decoded), href),
-        ),
-      ]
-    }
-  }
-}
-
-/// Every rule in the list a name can link to, the rule name as the target.
-fn rule_links(decoded: Roster) -> text.Links(String) {
-  roster.all_rules(decoded)
-  |> list.map(fn(rule) { #(rule.name, rule.name) })
-  |> text.links
-}
-
-fn rule_href(list_id: String, rule_name: String) -> String {
-  route.to_hash(route.RulePage(list_id, rule_name))
-}
-
-fn rule_chip_href(list_id: String, rule: sheet.Rule) -> String {
-  rule_href(list_id, rule.name)
-}
-
-fn title(saved: Saved) -> String {
-  case string.trim(saved.name) {
-    "" -> "Untitled list"
-    _ -> saved.name
-  }
+      ]),
+    ],
+    lists_view(lists.home(model.lists)),
+    [
+      html.section([attribute.class("about")], [
+        html.h2([], [html.text("About this device")]),
+        html.dl([], [
+          fact("Version", model.running),
+          fact("Storage", storage_label(model.storage)),
+          fact("Persistent storage", persistence_label(model.persistence)),
+          fact(
+            "First opened on this device",
+            first_opened_label(model.first_opened),
+          ),
+        ]),
+      ]),
+    ],
+  ])
 }
 
 fn fact(term: String, detail: String) -> Element(Msg) {
@@ -767,7 +339,7 @@ fn storage_label(storage: Option(Result(Database, StorageError))) -> String {
   case storage {
     None -> "Opening…"
     Some(Ok(_)) -> "Open"
-    Some(Error(error)) -> describe(error)
+    Some(Error(error)) -> sheet_view.describe_storage_error(error)
   }
 }
 
@@ -787,31 +359,7 @@ fn first_opened_label(
   case first_opened {
     None -> "Reading…"
     Some(Ok(ms)) -> browser.local_time(ms)
-    Some(Error(error)) -> "Unknown. " <> describe(error)
-  }
-}
-
-fn describe(error: StorageError) -> String {
-  case error {
-    storage.OpenFailed(reason) -> "Could not open. " <> reason
-    storage.ReadFailed(reason) -> "Could not read. " <> reason
-    storage.WriteFailed(reason) -> "Could not save. " <> reason
-    storage.DeleteFailed(reason) -> "Could not delete. " <> reason
-    storage.Undecodable(key) -> "The saved " <> key <> " could not be read."
-  }
-}
-
-fn describe_problem(problem: Problem) -> String {
-  case problem {
-    FileNotRead(reason) -> "That file could not be read. " <> reason
-    NotAList(roster.NotJson) ->
-      "That file is not a list export. It is not JSON."
-    NotAList(roster.NoRoster) ->
-      "That file is JSON, but not a list export. It has no roster in it."
-    NotAList(roster.UnexpectedShape(at:)) ->
-      "That list file has something this app cannot read, at " <> at <> "."
-    NotSaved(error) -> "The list could not be saved. " <> describe(error)
-    NotDeleted(error) -> "The list could not be deleted. " <> describe(error)
-    NoStorage -> "Storage is not open on this device, so lists cannot change."
+    Some(Error(error)) ->
+      "Unknown. " <> sheet_view.describe_storage_error(error)
   }
 }

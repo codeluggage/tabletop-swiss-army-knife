@@ -9,6 +9,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import tabletop/route.{type Route}
 import tabletop/sheet.{type Cost, type ProfileGroup, type Rule}
+import tabletop/storage.{type StorageError}
 import tabletop/text.{type Links}
 
 /// One profile group as a section. `show_text` turns a value into elements,
@@ -156,4 +157,15 @@ pub fn not_found(message: String) -> List(Element(msg)) {
     back_link(route.Home, "All lists"),
     html.p([attribute.class("note")], [html.text(message)]),
   ]
+}
+
+/// A storage error in words, for any screen that shows one.
+pub fn describe_storage_error(error: StorageError) -> String {
+  case error {
+    storage.OpenFailed(reason) -> "Could not open. " <> reason
+    storage.ReadFailed(reason) -> "Could not read. " <> reason
+    storage.WriteFailed(reason) -> "Could not save. " <> reason
+    storage.DeleteFailed(reason) -> "Could not delete. " <> reason
+    storage.Undecodable(key) -> "The saved " <> key <> " could not be read."
+  }
 }

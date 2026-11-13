@@ -1,11 +1,11 @@
 import gleam/dict
 import gleam/option.{None, Some}
 import gleeunit
-import simplifile
 import tabletop.{
-  type Model, Applying, Available, DeleteCancelled, DeleteClicked, FileRead,
-  Flags, HashChanged, Model, NoStorage, NotAList, UpToDate, VersionFetched,
+  type Model, Applying, Available, FileRead, Flags, HashChanged, ListsMsg, Model,
+  UpToDate, VersionFetched,
 }
+import tabletop/lists
 import tabletop/roster
 import tabletop/route
 
@@ -65,22 +65,18 @@ pub fn a_hash_change_moves_screens_and_remembers_the_scroll_test() {
   assert dict.get(model.scroll, "#/") == Ok(120.0)
 }
 
-pub fn delete_asks_first_test() {
-  let #(asking, _) = tabletop.update(model(UpToDate), DeleteClicked("abc"))
-  assert asking.confirming == Some("abc")
-  let #(answered, _) = tabletop.update(asking, DeleteCancelled)
-  assert answered.confirming == None
+pub fn a_screen_change_closes_the_delete_question_test() {
+  let #(asking, _) =
+    tabletop.update(model(UpToDate), ListsMsg(lists.DeleteClicked("abc")))
+  assert asking.lists.confirming == Some("abc")
+  let #(moved, _) = tabletop.update(asking, HashChanged("#/list/abc", 0.0))
+  assert moved.lists.confirming == None
 }
 
-pub fn a_file_that_is_not_a_list_says_why_test() {
+pub fn a_read_file_goes_to_the_lists_test() {
   let #(model, _) =
     tabletop.update(model(UpToDate), FileRead(Ok(#("notes.txt", "hello"))))
-  assert model.problem == Some(NotAList(roster.NotJson))
-}
-
-pub fn a_list_with_storage_closed_says_so_test() {
-  let assert Ok(text) = simplifile.read("test/fixtures/invented-list.json")
-  let #(model, _) =
-    tabletop.update(model(UpToDate), FileRead(Ok(#("list.json", text))))
-  assert model.problem == Some(NoStorage)
+  assert model.lists.problem == Some(lists.NotAList(roster.NotJson))
+  let #(model, _) = tabletop.update(model, FileRead(Error("gone")))
+  assert model.lists.problem == Some(lists.FileNotRead("gone"))
 }
