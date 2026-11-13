@@ -7,7 +7,6 @@
 
 import gleam/bit_array
 import gleam/bool
-import gleam/int
 import gleam/list
 import gleam/result
 
@@ -139,7 +138,8 @@ fn read_header(directory: BitArray) -> Result(#(Entry, BitArray), ZipError) {
       _:bytes-size(comment_length),
       rest:bytes,
     >> -> {
-      let encrypted = int.bitwise_and(flags, 1) == 1
+      // The lowest flag bit.
+      let encrypted = flags % 2 == 1
       use <- bool.guard(encrypted, Error(Unsupported(Encrypted)))
       let zip64 = list.contains([compressed_size, size, offset], 0xffffffff)
       use <- bool.guard(zip64, Error(Unsupported(Zip64)))
