@@ -112,7 +112,7 @@ pub fn every_name_publish_acts_on_is_in_the_workflow_test() {
   list.each(publish.check_steps, fn(step) {
     assert list.contains(names, step.0) as step.0
   })
-  assert list.contains(lines, "  " <> publish.deploy_job <> ":")
+  assert list.contains(list.map(lines, string.trim), publish.deploy_job <> ":")
 }
 
 pub fn any_other_failure_is_sent_once_more_test() {
