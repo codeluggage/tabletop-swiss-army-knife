@@ -1,5 +1,6 @@
 // Node calls for the dev commands. No decisions here.
 import { spawnSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { Result$Ok, Result$Error, BitArray$BitArray$data, toList } from "../gleam.mjs";
 
@@ -52,7 +53,27 @@ export function set_exit_code(code) {
 
 // `respond` is a Gleam fn(url) -> #(status, content_type, body).
 export function start_server(port, respond) {
-  createServer((request, response) => {
+  createServer(async (request, response) => {
+    const local_url = new URL(request.url, "http://localhost");
+    if (local_url.pathname === "/__local_test_page") {
+      try {
+        const configured = (await readFile("local-data/data-source.url", "utf8")).trim();
+        const source = local_url.searchParams.get("url")?.trim() || configured;
+        if (!source.startsWith("https://")) throw new Error("Enter a page address starting with https://.");
+        const remote = await fetch(source);
+        if (!remote.ok) throw new Error(`Data source responded with ${remote.status}`);
+        response.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "x-source-url": remote.url,
+        });
+        response.end(await remote.text());
+      } catch (error) {
+        response.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+        response.end(`Could not pull local test data: ${String(error)}`);
+      }
+      return;
+    }
     const [status, type, body] = respond(request.url);
     const view = BitArray$BitArray$data(body);
     response.writeHead(status, { "content-type": type, "cache-control": "no-cache" });

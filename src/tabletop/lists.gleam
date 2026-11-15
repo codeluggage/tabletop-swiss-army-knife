@@ -45,7 +45,13 @@ pub type State {
 }
 
 pub type DraftUnit {
-  DraftUnit(name: String, points: Int, rule_name: String, rule_text: String)
+  DraftUnit(
+    name: String,
+    points: Int,
+    rule_name: String,
+    rule_text: String,
+    preview_html: String,
+  )
 }
 
 /// A saved list. `roster` is an error when its file no longer decodes.
@@ -111,6 +117,27 @@ pub fn init() -> State {
     rule_name: "",
     rule_text: "",
     draft_units: [],
+    builder_problem: None,
+  )
+}
+
+/// Add a locally imported web page to the list being built.
+pub fn add_imported_entry(
+  state: State,
+  name: String,
+  points: Int,
+  details: String,
+  preview_html: String,
+) -> State {
+  let rule_name = case details == "" {
+    True -> ""
+    False -> "Imported page details"
+  }
+  State(
+    ..state,
+    draft_units: list.append(state.draft_units, [
+      DraftUnit(name:, points:, rule_name:, rule_text: details, preview_html:),
+    ]),
     builder_problem: None,
   )
 }
@@ -252,6 +279,7 @@ fn add_draft_unit(state: State) -> State {
                 points:,
                 rule_name: string.trim(state.rule_name),
                 rule_text: string.trim(state.rule_text),
+                preview_html: "",
               ),
             ]),
             builder_problem: None,
@@ -561,56 +589,7 @@ pub fn new_list_page(state: State) -> List(Element(Msg)) {
       state.force_name,
       ForceNameChanged,
     ),
-    html.h2([], [html.text("Add an entry")]),
-    builder_text_field(
-      "Entry name",
-      "builder-unit-name",
-      state.unit_name,
-      UnitNameChanged,
-    ),
-    html.div([attribute.class("field")], [
-      html.label([attribute.for("builder-unit-points")], [
-        html.text("Points"),
-      ]),
-      html.input([
-        attribute.type_("number"),
-        attribute.id("builder-unit-points"),
-        attribute.inputmode("numeric"),
-        attribute.min("0"),
-        attribute.value(state.unit_points),
-        event.on_input(UnitPointsChanged),
-      ]),
-    ]),
-    builder_text_field(
-      "Rule name (optional)",
-      "builder-rule-name",
-      state.rule_name,
-      RuleNameChanged,
-    ),
-    html.div([attribute.class("field")], [
-      html.label([attribute.for("builder-rule-text")], [
-        html.text("Rule text (optional)"),
-      ]),
-      html.textarea(
-        [
-          attribute.id("builder-rule-text"),
-          attribute.rows(4),
-          event.on_input(RuleTextChanged),
-        ],
-        state.rule_text,
-      ),
-    ]),
-    html.div([attribute.class("actions")], [
-      html.button(
-        [
-          attribute.type_("button"),
-          attribute.class("button"),
-          event.on_click(AddUnitClicked),
-        ],
-        [html.text("Add entry")],
-      ),
-    ]),
-    html.h2([], [html.text("Entries")]),
+    html.h2([], [html.text("Units in this list")]),
     case state.draft_units {
       [] ->
         html.p([attribute.class("note")], [
@@ -669,6 +648,26 @@ fn draft_unit_rows(units: List(DraftUnit), index: Int) -> List(Element(Msg)) {
             name, _ -> sheet_view.meta(name)
           },
         ]),
+        case unit.rule_text {
+          "" -> element.none()
+          _ ->
+            html.details([], [
+              html.summary([], [html.text("View unit details")]),
+              case unit.preview_html {
+                "" ->
+                  html.pre([attribute.class("unit-details")], [
+                    html.text(unit.rule_text),
+                  ])
+                preview_html ->
+                  html.iframe([
+                    attribute.class("unit-details-frame"),
+                    attribute.attribute("title", unit.name <> " details"),
+                    attribute.attribute("sandbox", ""),
+                    attribute.attribute("srcdoc", preview_html),
+                  ])
+              },
+            ])
+        },
         html.button(
           [
             attribute.type_("button"),

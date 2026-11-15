@@ -44,6 +44,7 @@ pub fn the_builder_adds_and_removes_entries_test() {
         35,
         "Example rule",
         "A note entered by the user.",
+        "",
       ),
     ]
   let #(state, _) = lists.update(state, lists.RemoveUnitClicked(index: 0), None)

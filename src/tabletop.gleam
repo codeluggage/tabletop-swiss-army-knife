@@ -65,6 +65,7 @@ pub type Model {
     first_opened: Option(Result(Int, StorageError)),
     /// What went wrong with the last chosen file itself.
     file_problem: Option(FileProblem),
+    local_source_url: String,
     lists: lists.State,
     data: data.State,
     cards: cards.State,
@@ -108,6 +109,9 @@ pub type Msg {
   HashChanged(hash: String, left_at: Float)
   FileChosen(input: Dynamic)
   FileRead(Result(#(String, BitArray), String))
+  LocalDataClicked
+  LocalSourceUrlChanged(String)
+  LocalPageFetched(Result(#(String, Int, String, String), String))
   ListsMsg(lists.Msg)
   DataMsg(data.Msg)
   CardsMsg(cards.Msg)
@@ -127,6 +131,7 @@ pub fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       persistence: None,
       first_opened: None,
       file_problem: None,
+      local_source_url: "",
       lists: lists.init(),
       data: data.init(),
       cards: cards.init(),
@@ -247,6 +252,34 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           effect.none(),
         )
       }
+    LocalSourceUrlChanged(url) -> #(
+      Model(..model, local_source_url: url),
+      effect.none(),
+    )
+    LocalDataClicked -> #(
+      Model(..model, file_problem: None),
+      effects.from_promise(
+        fn() { browser.fetch_local_page(model.local_source_url) },
+        LocalPageFetched,
+      ),
+    )
+    LocalPageFetched(Ok(#(name, points, details, preview_html))) -> #(
+      Model(
+        ..model,
+        lists: lists.add_imported_entry(
+          model.lists,
+          name,
+          points,
+          details,
+          preview_html,
+        ),
+      ),
+      effect.none(),
+    )
+    LocalPageFetched(Error(reason)) -> #(
+      Model(..model, file_problem: Some(FileNotRead(reason))),
+      effect.none(),
+    )
     ListsMsg(msg) ->
       lists.update(model.lists, msg, model.storage) |> from_lists(model)
     DataMsg(msg) -> {
@@ -419,6 +452,7 @@ pub fn view(model: Model) -> Element(Msg) {
     route.Home -> home(model)
     route.NewListPage ->
       list.flatten([
+        local_data_button(model.local_source_url),
         lists_view(lists.new_list_page(model.lists)),
         [file_problem_view(model.file_problem)],
         data_view(data.status(model.data)),
@@ -607,6 +641,36 @@ fn import_file_input(model: Model) -> Element(Msg) {
       decode.at(["target"], decode.dynamic) |> decode.map(FileChosen),
     ),
   ])
+}
+
+fn local_data_button(source_url: String) -> List(Element(Msg)) {
+  case browser.is_local_development() {
+    True -> [
+      html.div([attribute.class("field")], [
+        html.label([attribute.for("local-source-url")], [
+          html.text("Unit page address (optional)"),
+        ]),
+        html.input([
+          attribute.type_("url"),
+          attribute.id("local-source-url"),
+          attribute.value(source_url),
+          attribute.placeholder("Leave blank for the local default"),
+          attribute.autocomplete("url"),
+          event.on_input(LocalSourceUrlChanged),
+        ]),
+      ]),
+      html.button(
+        [attribute.class("button big"), event.on_click(LocalDataClicked)],
+        [html.text("Add unit from page")],
+      ),
+      html.p([attribute.class("note")], [
+        html.text(
+          "Loads the page name, first listed cost and unit details into the list. You can add units from more page addresses.",
+        ),
+      ]),
+    ]
+    False -> []
+  }
 }
 
 fn file_problem_view(problem: Option(FileProblem)) -> Element(Msg) {
