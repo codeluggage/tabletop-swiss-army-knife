@@ -193,11 +193,8 @@ The person you work for plays tabletop games and is not a developer. They write 
 
 Each reply in a thread sends the whole thread to the model again. So a long thread uses up the person's plan faster than a new thread that starts from a short note.
 
-When the person says "wrap up", "hand off" or "let's stop":
-
-1. First, reply with what was left unsaid, as a short list in plain words. Look for: something you assumed and did not check, a step you skipped, something that may look wrong in the app, a request you did only in part, and what you would do differently now. When there is nothing, say "Nothing left unsaid."
-2. Then write `handoff.md` in this folder, over the old one. It is for the next thread, not for the person. Write the date, the live version, what the person asked for, what is done, what is not done and why, and the one next step. Keep it under 30 lines. Git ignores this file, so do not commit it.
-3. End with one sentence: the person can start a new thread now, and the new thread reads the handoff by itself.
+- "Wrap up" or "let's stop": use the `wrap-up` skill in `.agents/skills/wrap-up/`. It lists what was left unsaid, then writes `handoff.md`.
+- "Hand off" or "new thread": use the `handoff` skill in `.agents/skills/handoff/`. It only writes `handoff.md`.
 
 After the third change in one thread, end your reply with one sentence that offers a wrap-up and a new thread.
 
@@ -261,6 +258,7 @@ The build stamps a version, the minute of the build on the London clock such as 
 - `test/` - gleeunit tests, one file per module, plus `content_rule_test.gleam`. Test data goes in `test/fixtures/`.
 - `test/tabletop/zip_writer.gleam` + `zip_writer_ffi.mjs` - writes the zips the tests read. `data_set_test.gleam` goes from a zip to pages on `test/fixtures/data/`, and on `local-data/` when it is there.
 - `dist/` - build output, ignored by git.
+- `.agents/skills/` - Codex skills: `wrap-up` and `handoff`.
 - `.codex/hooks.json` + `hooks/` - Codex hooks: `gleam check` after each edit, and check, test and format before the agent finishes. Each hook has a `.sh` for macOS and Linux and a `.ps1` for Windows.
 - `START-HERE.md` - the person's guide to changing the app with Codex on Windows.
 - `LICENSE` - the GNU General Public License, version 3. The app is under version 3 or later.
