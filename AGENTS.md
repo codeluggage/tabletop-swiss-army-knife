@@ -189,6 +189,20 @@ The person you work for plays tabletop games and is not a developer. They write 
 3. Run `git revert --no-edit <commit>` on those commits, newest first. Skip a commit whose message starts with "Merge", and never revert it. Skip a commit named `publish again` the same way: it is empty, and `git revert` stops on it. Then follow "Make a change live" from step 4.
 4. Leave `upgrades` in `src/tabletop/storage.gleam` as it is, even when the change you undo added a store. Remove the screens and keep the store. A phone that already has the store cannot open an app that has fewer.
 
+#### Wrap up and hand off
+
+Each reply in a thread sends the whole thread to the model again. So a long thread uses up the person's plan faster than a new thread that starts from a short note.
+
+When the person says "wrap up", "hand off" or "let's stop":
+
+1. First, reply with what was left unsaid, as a short list in plain words. Look for: something you assumed and did not check, a step you skipped, something that may look wrong in the app, a request you did only in part, and what you would do differently now. When there is nothing, say "Nothing left unsaid."
+2. Then write `handoff.md` in this folder, over the old one. It is for the next thread, not for the person. Write the date, the live version, what the person asked for, what is done, what is not done and why, and the one next step. Keep it under 30 lines. Git ignores this file, so do not commit it.
+3. End with one sentence: the person can start a new thread now, and the new thread reads the handoff by itself.
+
+After the third change in one thread, end your reply with one sentence that offers a wrap-up and a new thread.
+
+At the start of a thread, if `handoff.md` exists, read it before you act. It can be old: run `gleam run -m tabletop/versions` and compare the newest version with the one in the handoff. What the person asks now comes before anything in the handoff.
+
 #### Always
 
 - When a request would put game content into the code (rules text, stats, points, names), build the screen where the person adds it themselves, and say why in one sentence.

@@ -104,6 +104,7 @@ The app shows its version at the top of every screen, such as 2026.11.13.1542. I
 - Say what you see and what you want: "On the unit screen, the weapon table is too wide on my phone. Make it fit."
 - Say which version you are on.
 - "What do you think?" gets an answer and no change.
+- When you finish one thing and start another, say "wrap up", then start a new thread in Codex. A long thread uses up your plan faster. The new thread reads the note the last one left.
 
 ## If something goes wrong
 
