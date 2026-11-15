@@ -318,6 +318,30 @@ summary {
   padding-bottom: 0.75rem;
 }
 
+.unit-details {
+  max-height: 24rem;
+  overflow: auto;
+  margin: 0.5rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: var(--surface);
+  font: inherit;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.unit-details-frame {
+  display: block;
+  width: 100%;
+  height: min(75vh, 52rem);
+  min-height: 24rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: var(--surface);
+}
+
 /* The rows a row opens up to, under it. */
 .rows.children {
   padding-left: 1.25rem;

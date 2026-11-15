@@ -17,6 +17,91 @@ export function fetch_no_store(url) {
   );
 }
 
+export function is_local_development() {
+  return location.hostname === "localhost" || location.hostname === "127.0.0.1";
+}
+
+export async function fetch_local_page(url) {
+  try {
+    const response = await fetch(
+      "/__local_test_page?url=" + encodeURIComponent(url),
+      { cache: "no-store" },
+    );
+    if (!response.ok) return Result$Error(await response.text());
+    const sourceUrl = response.headers.get("x-source-url") || url;
+    const page = new DOMParser().parseFromString(await response.text(), "text/html");
+    const name = page.querySelector("h1")?.textContent?.trim()
+      || page.title.split(/\s+[—–-]\s+/)[0].trim();
+    const rows = [...page.querySelectorAll("tr")];
+    const cost = rows
+      .map((row) => [...row.querySelectorAll("td")].map((cell) => cell.textContent.replace(/\s+/g, " ").trim()))
+      .find((cells) => /\d+\s+models?/i.test(cells[0] ?? "") && /\d/.test(cells[1] ?? ""));
+    const points = cost?.[1]?.match(/\d[\d,]*/)?.[0].replaceAll(",", "");
+    if (!name || !points) return Result$Error("Could not find a page title and a model cost row.");
+    const sheet = page.querySelector(".datasheet");
+    const preview = sheet?.cloneNode(true);
+    if (preview) {
+      for (const section of [...preview.children]) {
+        if (section.classList.contains("ShowDatasheetFeatures")) section.remove();
+      }
+      for (const element of [preview, ...preview.querySelectorAll("*")]) {
+        for (const attribute of [...element.attributes]) {
+          if (attribute.name.toLowerCase().startsWith("on")) {
+            element.removeAttribute(attribute.name);
+          }
+        }
+      }
+      for (const element of preview.querySelectorAll("script, iframe, object, embed, form")) {
+        element.remove();
+      }
+    }
+    const sections = [...(sheet?.children ?? [])]
+      .filter((section) => !section.classList.contains("ShowDatasheetFeatures"));
+    for (const row of sections.flatMap((section) => [...section.querySelectorAll("tr")])) {
+      const cells = [...row.querySelectorAll("th, td")]
+        .map((cell) => cell.textContent.replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+      if (cells.length > 0) row.replaceWith(page.createTextNode(cells.join(" | ") + "\n"));
+    }
+    for (const node of sections.flatMap((section) =>
+      [...section.querySelectorAll("div, p, ul, ol, li, h1, h2, h3, h4, h5, h6")])) {
+      node.insertAdjacentText("beforebegin", "\n");
+      node.insertAdjacentText("afterend", "\n");
+    }
+    const lines = sections
+      .map((section) => section.textContent || "")
+      .join("\n\n")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const details = lines
+      .filter((line, index) => line !== lines[index - 1]
+        && !(line.includes("|") === false && lines[index + 1]?.startsWith(line + " | ")))
+      .join("\n");
+    const base = '<base href="' + sourceUrl.replace(/"/g, "%22") + '">';
+    const styles = [...page.querySelectorAll('link[rel~="stylesheet"]')]
+      .map((link) => {
+        try {
+          const href = new URL(link.getAttribute("href"), sourceUrl);
+          return href.protocol === "https:"
+            ? '<link rel="stylesheet" href="' + href.href + '">'
+            : "";
+        } catch {
+          return "";
+        }
+      })
+      .join("");
+    const previewHtml = preview
+      ? "<!doctype html><html><head>" + base
+        + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        + styles + "</head><body>" + preview.outerHTML + "</body></html>"
+      : "";
+    return Result$Ok([name, Number(points), details, previewHtml]);
+  } catch (error) {
+    return Result$Error(String(error));
+  }
+}
+
 export function register_worker(url) {
   navigator.serviceWorker?.register(url);
 }

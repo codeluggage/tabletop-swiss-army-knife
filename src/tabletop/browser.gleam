@@ -17,6 +17,17 @@ pub fn running_commit() -> String
 @external(javascript, "./browser_ffi.mjs", "fetch_no_store")
 pub fn fetch_no_store(url: String) -> Promise(Result(String, String))
 
+/// Whether the page is running on the local development server.
+@external(javascript, "./browser_ffi.mjs", "is_local_development")
+pub fn is_local_development() -> Bool
+
+/// Fetch the locally configured development page and read its unit name,
+/// first listed point cost, and datasheet text.
+@external(javascript, "./browser_ffi.mjs", "fetch_local_page")
+pub fn fetch_local_page(
+  url: String,
+) -> Promise(Result(#(String, Int, String, String), String))
+
 @external(javascript, "./browser_ffi.mjs", "register_worker")
 pub fn register_worker(url: String) -> Nil
 
