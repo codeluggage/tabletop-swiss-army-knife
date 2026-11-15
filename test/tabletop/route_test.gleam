@@ -1,14 +1,15 @@
 import gleam/list
 import tabletop/route.{
   CardPage, CardsPage, CataloguePage, DataSetPage, Game, GamePage, GamesPage,
-  Home, ImportCardsPage, ListPage, NewCardPage, NewGamePage, Node, NodePage,
-  RulePage, SheetPage, SheetsPage, UnitPage,
+  Home, ImportCardsPage, ListPage, NewCardPage, NewGamePage, NewListPage, Node,
+  NodePage, RulePage, SheetPage, SheetsPage, UnitPage,
 }
 
 pub fn parse_reads_each_screen_test() {
   assert route.parse("") == Home
   assert route.parse("#") == Home
   assert route.parse("#/") == Home
+  assert route.parse("#/list/new") == NewListPage
   assert route.parse("#/list/abc-1") == ListPage("abc-1")
   assert route.parse("#/list/abc-1/unit/u-2") == UnitPage("abc-1", "u-2")
   assert route.parse("#/list/abc-1/rule/Teatime")
@@ -17,6 +18,7 @@ pub fn parse_reads_each_screen_test() {
 
 pub fn to_hash_writes_each_screen_test() {
   assert route.to_hash(Home) == "#/"
+  assert route.to_hash(NewListPage) == "#/list/new"
   assert route.to_hash(ListPage("abc-1")) == "#/list/abc-1"
   assert route.to_hash(UnitPage("abc-1", "u-2")) == "#/list/abc-1/unit/u-2"
   assert route.to_hash(RulePage("abc-1", "Teatime"))

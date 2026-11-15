@@ -33,7 +33,19 @@ pub type State {
     problem: Option(Problem),
     /// The id of the list whose Delete was pressed and waits for Yes or No.
     confirming: Option(String),
+    list_name: String,
+    force_name: String,
+    unit_name: String,
+    unit_points: String,
+    rule_name: String,
+    rule_text: String,
+    draft_units: List(DraftUnit),
+    builder_problem: Option(String),
   )
+}
+
+pub type DraftUnit {
+  DraftUnit(name: String, points: Int, rule_name: String, rule_text: String)
 }
 
 /// A saved list. `roster` is an error when its file no longer decodes.
@@ -74,11 +86,33 @@ pub type Msg {
   DeleteCancelled
   DeleteConfirmed(id: String)
   ListDeleted(id: String, result: Result(Nil, StorageError))
+  ListNameChanged(String)
+  ForceNameChanged(String)
+  UnitNameChanged(String)
+  UnitPointsChanged(String)
+  RuleNameChanged(String)
+  RuleTextChanged(String)
+  AddUnitClicked
+  RemoveUnitClicked(index: Int)
+  CreateListClicked
+  ListCreated(Result(Saved, StorageError))
   BackClicked
 }
 
 pub fn init() -> State {
-  State(lists: None, problem: None, confirming: None)
+  State(
+    lists: None,
+    problem: None,
+    confirming: None,
+    list_name: "",
+    force_name: "",
+    unit_name: "",
+    unit_points: "",
+    rule_name: "",
+    rule_text: "",
+    draft_units: [],
+    builder_problem: None,
+  )
 }
 
 /// Read the saved lists once storage has answered. When storage did not open,
@@ -137,11 +171,224 @@ pub fn update(
       State(..state, confirming: None, problem: Some(NotDeleted(error))),
       effect.none(),
     )
+    ListNameChanged(value) -> #(
+      State(..state, list_name: value, builder_problem: None),
+      effect.none(),
+    )
+    ForceNameChanged(value) -> #(
+      State(..state, force_name: value, builder_problem: None),
+      effect.none(),
+    )
+    UnitNameChanged(value) -> #(
+      State(..state, unit_name: value, builder_problem: None),
+      effect.none(),
+    )
+    UnitPointsChanged(value) -> #(
+      State(..state, unit_points: value, builder_problem: None),
+      effect.none(),
+    )
+    RuleNameChanged(value) -> #(
+      State(..state, rule_name: value, builder_problem: None),
+      effect.none(),
+    )
+    RuleTextChanged(value) -> #(
+      State(..state, rule_text: value, builder_problem: None),
+      effect.none(),
+    )
+    AddUnitClicked -> #(add_draft_unit(state), effect.none())
+    RemoveUnitClicked(index:) -> #(
+      State(
+        ..state,
+        draft_units: remove_draft_unit(state.draft_units, index),
+        builder_problem: None,
+      ),
+      effect.none(),
+    )
+    CreateListClicked -> create_list(state, db)
+    ListCreated(Ok(saved)) -> #(
+      State(
+        ..state,
+        lists: Some(Ok([saved, ..saved_lists(state)])),
+        builder_problem: None,
+      ),
+      effect.from(fn(_) { route.go(route.ListPage(saved.id)) }),
+    )
+    ListCreated(Error(error)) -> #(
+      State(
+        ..state,
+        builder_problem: Some(
+          "The list could not be saved. "
+          <> sheet_view.describe_storage_error(error),
+        ),
+      ),
+      effect.none(),
+    )
     BackClicked -> #(state, {
       use _ <- effect.from
       browser.history_back()
     })
   }
+}
+
+fn add_draft_unit(state: State) -> State {
+  case int.parse(string.trim(state.unit_points)) {
+    Error(Nil) ->
+      State(..state, builder_problem: Some("Enter a whole number of points."))
+    Ok(points) if points < 0 ->
+      State(..state, builder_problem: Some("Points cannot be below zero."))
+    Ok(points) ->
+      case string.is_empty(string.trim(state.unit_name)) {
+        True -> State(..state, builder_problem: Some("Enter an entry name."))
+        False ->
+          State(
+            ..state,
+            unit_name: "",
+            unit_points: "",
+            rule_name: "",
+            rule_text: "",
+            draft_units: list.append(state.draft_units, [
+              DraftUnit(
+                name: string.trim(state.unit_name),
+                points:,
+                rule_name: string.trim(state.rule_name),
+                rule_text: string.trim(state.rule_text),
+              ),
+            ]),
+            builder_problem: None,
+          )
+      }
+  }
+}
+
+fn remove_draft_unit(units: List(DraftUnit), index: Int) -> List(DraftUnit) {
+  case units, index {
+    [], _ -> []
+    [_, ..rest], 0 -> rest
+    [unit, ..rest], index -> [unit, ..remove_draft_unit(rest, index - 1)]
+  }
+}
+
+fn create_list(
+  state: State,
+  db: Option(Result(Database, StorageError)),
+) -> #(State, Effect(Msg)) {
+  case
+    string.is_empty(string.trim(state.list_name)),
+    string.is_empty(string.trim(state.force_name)),
+    state.draft_units,
+    db
+  {
+    True, _, _, _ -> #(
+      State(..state, builder_problem: Some("Enter a list name.")),
+      effect.none(),
+    )
+    _, True, _, _ -> #(
+      State(..state, builder_problem: Some("Enter a force name.")),
+      effect.none(),
+    )
+    _, _, [], _ -> #(
+      State(..state, builder_problem: Some("Add at least one entry.")),
+      effect.none(),
+    )
+    _, _, _, Some(Ok(db)) -> {
+      let text = built_list_text(state)
+      case roster.decode(text) {
+        Ok(decoded) -> #(
+          state,
+          effects.from_promise(
+            fn() { save_list(db, "list.json", text, decoded) },
+            ListCreated,
+          ),
+        )
+        Error(_) -> #(
+          State(
+            ..state,
+            builder_problem: Some("The list could not be prepared."),
+          ),
+          effect.none(),
+        )
+      }
+    }
+    _, _, _, _ -> #(
+      State(
+        ..state,
+        builder_problem: Some("Storage is not open on this device."),
+      ),
+      effect.none(),
+    )
+  }
+}
+
+fn built_list_text(state: State) -> String {
+  json.object([
+    #(
+      "roster",
+      json.object([
+        #("name", json.string(string.trim(state.list_name))),
+        #(
+          "forces",
+          json.array([state], fn(_) {
+            json.object([
+              #("name", json.string(string.trim(state.force_name))),
+              #("catalogueName", json.string(string.trim(state.force_name))),
+              #(
+                "selections",
+                json.array(draft_unit_jsons(state.draft_units, 0), fn(unit) {
+                  unit
+                }),
+              ),
+            ])
+          }),
+        ),
+      ]),
+    ),
+  ])
+  |> json.to_string
+}
+
+fn draft_unit_jsons(units: List(DraftUnit), index: Int) -> List(json.Json) {
+  case units {
+    [] -> []
+    [unit, ..rest] -> [
+      draft_unit_json(unit, index),
+      ..draft_unit_jsons(rest, index + 1)
+    ]
+  }
+}
+
+fn draft_unit_json(unit: DraftUnit, index: Int) -> json.Json {
+  let rules = case unit.rule_name, unit.rule_text {
+    "", "" -> []
+    "", description -> [
+      json.object([
+        #("name", json.string("Note")),
+        #("description", json.string(description)),
+      ]),
+    ]
+    name, description -> [
+      json.object([
+        #("name", json.string(name)),
+        #("description", json.string(description)),
+      ]),
+    ]
+  }
+  json.object([
+    #("id", json.string("entry-" <> int.to_string(index))),
+    #("name", json.string(unit.name)),
+    #("type", json.string("unit")),
+    #("number", json.int(1)),
+    #(
+      "costs",
+      json.array([unit.points], fn(points) {
+        json.object([
+          #("name", json.string("Points")),
+          #("typeId", json.string("points")),
+          #("value", json.int(points)),
+        ])
+      }),
+    ),
+    #("rules", json.array(rules, fn(rule) { rule })),
+  ])
 }
 
 /// What happens after the shell has read a chosen file: a list file is saved,
@@ -262,8 +509,173 @@ pub fn home(state: State) -> List(Element(Msg)) {
           html.text(describe_problem(problem)),
         ])
     },
+    html.div([attribute.class("actions")], [
+      html.a(
+        [
+          attribute.class("button primary"),
+          attribute.href(route.to_hash(route.NewListPage)),
+        ],
+        [html.text("Build a list")],
+      ),
+    ]),
     saved_lists_view(state),
   ]
+}
+
+/// A blank list form. Names, points and rule notes come from the person using
+/// the app; the saved list stays in this device's browser storage.
+pub fn new_list_page(state: State) -> List(Element(Msg)) {
+  [
+    sheet_view.back_link(route.Home, "All lists"),
+    html.h1([], [html.text("Build a list")]),
+    html.p([attribute.class("note")], [
+      html.text(
+        "Enter the details from your own game data. This list is saved on this device.",
+      ),
+    ]),
+    case state.builder_problem {
+      None -> element.none()
+      Some(problem) ->
+        html.p([attribute.class("problem"), attribute.role("alert")], [
+          html.text(problem),
+        ])
+    },
+    builder_text_field(
+      "List name",
+      "builder-list-name",
+      state.list_name,
+      ListNameChanged,
+    ),
+    builder_text_field(
+      "Force name",
+      "builder-force-name",
+      state.force_name,
+      ForceNameChanged,
+    ),
+    html.h2([], [html.text("Add an entry")]),
+    builder_text_field(
+      "Entry name",
+      "builder-unit-name",
+      state.unit_name,
+      UnitNameChanged,
+    ),
+    html.div([attribute.class("field")], [
+      html.label([attribute.for("builder-unit-points")], [
+        html.text("Points"),
+      ]),
+      html.input([
+        attribute.type_("number"),
+        attribute.id("builder-unit-points"),
+        attribute.inputmode("numeric"),
+        attribute.min("0"),
+        attribute.value(state.unit_points),
+        event.on_input(UnitPointsChanged),
+      ]),
+    ]),
+    builder_text_field(
+      "Rule name (optional)",
+      "builder-rule-name",
+      state.rule_name,
+      RuleNameChanged,
+    ),
+    html.div([attribute.class("field")], [
+      html.label([attribute.for("builder-rule-text")], [
+        html.text("Rule text (optional)"),
+      ]),
+      html.textarea(
+        [
+          attribute.id("builder-rule-text"),
+          attribute.rows(4),
+          event.on_input(RuleTextChanged),
+        ],
+        state.rule_text,
+      ),
+    ]),
+    html.div([attribute.class("actions")], [
+      html.button(
+        [
+          attribute.type_("button"),
+          attribute.class("button"),
+          event.on_click(AddUnitClicked),
+        ],
+        [html.text("Add entry")],
+      ),
+    ]),
+    html.h2([], [html.text("Entries")]),
+    case state.draft_units {
+      [] ->
+        html.p([attribute.class("note")], [
+          html.text("No entries added yet."),
+        ])
+      units -> html.ul([attribute.class("rows")], draft_unit_rows(units, 0))
+    },
+    html.p([attribute.class("costs")], [
+      html.text(
+        "Total: " <> int.to_string(draft_total(state.draft_units)) <> " Points",
+      ),
+    ]),
+    html.div([attribute.class("actions")], [
+      html.button(
+        [
+          attribute.type_("button"),
+          attribute.class("button primary"),
+          attribute.disabled(list.is_empty(state.draft_units)),
+          event.on_click(CreateListClicked),
+        ],
+        [html.text("Save list")],
+      ),
+    ]),
+  ]
+}
+
+fn builder_text_field(
+  label: String,
+  id: String,
+  value: String,
+  changed: fn(String) -> Msg,
+) -> Element(Msg) {
+  html.div([attribute.class("field")], [
+    html.label([attribute.for(id)], [html.text(label)]),
+    html.input([
+      attribute.type_("text"),
+      attribute.id(id),
+      attribute.value(value),
+      attribute.autocomplete("off"),
+      event.on_input(changed),
+    ]),
+  ])
+}
+
+fn draft_unit_rows(units: List(DraftUnit), index: Int) -> List(Element(Msg)) {
+  case units {
+    [] -> []
+    [unit, ..rest] -> [
+      html.li([attribute.class("saved")], [
+        html.div([attribute.class("row-link")], [
+          html.span([attribute.class("name")], [html.text(unit.name)]),
+          sheet_view.meta(int.to_string(unit.points) <> " Points"),
+          case unit.rule_name, unit.rule_text {
+            "", "" -> element.none()
+            "", _ -> sheet_view.meta("Rule note added")
+            name, _ -> sheet_view.meta(name)
+          },
+        ]),
+        html.button(
+          [
+            attribute.type_("button"),
+            attribute.class("button quiet"),
+            event.on_click(RemoveUnitClicked(index:)),
+          ],
+          [html.text("Remove")],
+        ),
+      ]),
+      ..draft_unit_rows(rest, index + 1)
+    ]
+  }
+}
+
+fn draft_total(units: List(DraftUnit)) -> Int {
+  list.fold(units, 0, fn(total, unit) { total + unit.points })
 }
 
 fn saved_lists_view(state: State) -> Element(Msg) {

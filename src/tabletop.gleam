@@ -417,6 +417,7 @@ fn reload() -> Effect(Msg) {
 pub fn view(model: Model) -> Element(Msg) {
   let page = case model.route {
     route.Home -> home(model)
+    route.NewListPage -> lists.new_list_page(model.lists) |> lists_view
     // The way back to a game that picked this list comes first.
     route.ListPage(list_id:) ->
       list.append(

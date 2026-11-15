@@ -24,6 +24,40 @@ pub fn a_list_with_storage_closed_says_so_test() {
   assert state.problem == Some(NoStorage)
 }
 
+pub fn the_builder_adds_and_removes_entries_test() {
+  let #(state, _) =
+    lists.update(lists.init(), lists.UnitNameChanged("Example piece"), None)
+  let #(state, _) = lists.update(state, lists.UnitPointsChanged("35"), None)
+  let #(state, _) =
+    lists.update(state, lists.RuleNameChanged("Example rule"), None)
+  let #(state, _) =
+    lists.update(
+      state,
+      lists.RuleTextChanged("A note entered by the user."),
+      None,
+    )
+  let #(state, _) = lists.update(state, lists.AddUnitClicked, None)
+  assert state.draft_units
+    == [
+      lists.DraftUnit(
+        "Example piece",
+        35,
+        "Example rule",
+        "A note entered by the user.",
+      ),
+    ]
+  let #(state, _) = lists.update(state, lists.RemoveUnitClicked(index: 0), None)
+  assert state.draft_units == []
+}
+
+pub fn the_builder_shows_points_rules_and_save_controls_test() {
+  let page = render(lists.new_list_page(lists.init()))
+  assert string.contains(page, "Build a list")
+  assert string.contains(page, "Points")
+  assert string.contains(page, "Rule text (optional)")
+  assert string.contains(page, "Save list")
+}
+
 fn saved_list() -> lists.State {
   let assert Ok(text) = simplifile.read("test/fixtures/invented-list.json")
   let assert Ok(decoded) = roster.decode(text)

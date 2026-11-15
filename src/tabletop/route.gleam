@@ -9,6 +9,8 @@ import gleam/uri
 pub type Route {
   /// `#/`: the saved lists.
   Home
+  /// `#/list/new`: make a list from details entered on this device.
+  NewListPage
   /// `#/list/<list id>`
   ListPage(list_id: String)
   /// `#/list/<list id>/unit/<selection id>`
@@ -66,6 +68,7 @@ pub fn parse(hash: String) -> Route {
       }
     })
   case parts {
+    Ok(["list", "new"]) -> NewListPage
     Ok(["list", list_id]) -> ListPage(list_id:)
     Ok(["list", list_id, "unit", unit_id]) -> UnitPage(list_id:, unit_id:)
     Ok(["list", list_id, "rule", rule_name]) -> RulePage(list_id:, rule_name:)
@@ -112,6 +115,7 @@ pub fn place_page(place: Place) -> Route {
 pub fn to_hash(route: Route) -> String {
   let parts = case route {
     Home -> []
+    NewListPage -> ["list", "new"]
     ListPage(list_id:) -> ["list", list_id]
     UnitPage(list_id:, unit_id:) -> ["list", list_id, "unit", unit_id]
     RulePage(list_id:, rule_name:) -> ["list", list_id, "rule", rule_name]
