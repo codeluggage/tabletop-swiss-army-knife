@@ -528,10 +528,19 @@ pub fn new_list_page(state: State) -> List(Element(Msg)) {
   [
     sheet_view.back_link(route.Home, "All lists"),
     html.h1([], [html.text("Build a list")]),
-    html.p([attribute.class("note")], [
-      html.text(
-        "Enter the details from your own game data. This list is saved on this device.",
+    html.div([attribute.class("import")], [
+      html.label(
+        [attribute.for("import-file"), attribute.class("button primary")],
+        [html.text("Import game data ZIP")],
       ),
+      html.p([attribute.class("note")], [
+        html.text(
+          "Choose a game data ZIP saved on this device. Imported data appears below for reference while you build your list.",
+        ),
+      ]),
+    ]),
+    html.p([attribute.class("note")], [
+      html.text("Your list and imported data stay on this device."),
     ]),
     case state.builder_problem {
       None -> element.none()

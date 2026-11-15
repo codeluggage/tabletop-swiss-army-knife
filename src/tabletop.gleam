@@ -417,7 +417,13 @@ fn reload() -> Effect(Msg) {
 pub fn view(model: Model) -> Element(Msg) {
   let page = case model.route {
     route.Home -> home(model)
-    route.NewListPage -> lists.new_list_page(model.lists) |> lists_view
+    route.NewListPage ->
+      list.flatten([
+        lists_view(lists.new_list_page(model.lists)),
+        [file_problem_view(model.file_problem)],
+        data_view(data.status(model.data)),
+        data_view(data.home(model.data)),
+      ])
     // The way back to a game that picked this list comes first.
     route.ListPage(list_id:) ->
       list.append(
@@ -485,6 +491,7 @@ pub fn view(model: Model) -> Element(Msg) {
         html.p([attribute.class("version-line")], [
           html.text("Version " <> model.running),
         ]),
+        import_file_input(model),
       ],
       page,
       [update_bar(model.update)],
@@ -562,19 +569,6 @@ fn home(model: Model) -> List(Element(Msg)) {
     [
       html.h1([], [html.text("Tabletop")]),
       html.div([attribute.class("import")], [
-        html.input([
-          attribute.type_("file"),
-          attribute.id("import-file"),
-          attribute.class("visually-hidden"),
-          attribute.accept([
-            ".json", ".zip", "application/json", "application/zip",
-          ]),
-          attribute.disabled(data.importing(model.data)),
-          event.on(
-            "change",
-            decode.at(["target"], decode.dynamic) |> decode.map(FileChosen),
-          ),
-        ]),
         html.label(
           [attribute.for("import-file"), attribute.class("button big")],
           [html.text("Import a file")],
@@ -585,13 +579,7 @@ fn home(model: Model) -> List(Element(Msg)) {
           ),
         ]),
       ]),
-      case model.file_problem {
-        None -> element.none()
-        Some(problem) ->
-          html.p([attribute.class("problem"), attribute.role("alert")], [
-            html.text(describe_file_problem(problem)),
-          ])
-      },
+      file_problem_view(model.file_problem),
     ],
     backup_view(backup.status(model.backup)),
     data_view(data.status(model.data)),
@@ -601,6 +589,34 @@ fn home(model: Model) -> List(Element(Msg)) {
     backup_view(backup.section(model.backup)),
     [about(model)],
   ])
+}
+
+fn import_file_input(model: Model) -> Element(Msg) {
+  let accepted = case model.route {
+    route.NewListPage -> [".zip", "application/zip"]
+    _ -> [".json", ".zip", "application/json", "application/zip"]
+  }
+  html.input([
+    attribute.type_("file"),
+    attribute.id("import-file"),
+    attribute.class("visually-hidden"),
+    attribute.accept(accepted),
+    attribute.disabled(data.importing(model.data)),
+    event.on(
+      "change",
+      decode.at(["target"], decode.dynamic) |> decode.map(FileChosen),
+    ),
+  ])
+}
+
+fn file_problem_view(problem: Option(FileProblem)) -> Element(Msg) {
+  case problem {
+    None -> element.none()
+    Some(problem) ->
+      html.p([attribute.class("problem"), attribute.role("alert")], [
+        html.text(describe_file_problem(problem)),
+      ])
+  }
 }
 
 fn about(model: Model) -> Element(Msg) {

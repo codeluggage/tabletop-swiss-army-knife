@@ -53,6 +53,7 @@ pub fn the_builder_adds_and_removes_entries_test() {
 pub fn the_builder_shows_points_rules_and_save_controls_test() {
   let page = render(lists.new_list_page(lists.init()))
   assert string.contains(page, "Build a list")
+  assert string.contains(page, "Import game data ZIP")
   assert string.contains(page, "Points")
   assert string.contains(page, "Rule text (optional)")
   assert string.contains(page, "Save list")
