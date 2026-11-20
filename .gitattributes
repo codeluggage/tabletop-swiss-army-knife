@@ -1,0 +1,5 @@
+# Every text file is stored and checked out with LF line ends, on Windows too.
+# The tests read project files line by line, and CRLF breaks that.
+* text=auto eol=lf
+# Test files are kept byte for byte: some hold Windows line ends or another encoding on purpose.
+test/fixtures/** -text
