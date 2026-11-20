@@ -51,6 +51,7 @@ Keep the project in `C:\src\tabletop`. A folder that OneDrive syncs, such as Doc
 3. Choose "Ask for approval". Codex then asks you before it runs a command or uses the internet.
 4. When Codex asks if you trust this project, say yes.
 5. Open "Review hooks" and trust the two hooks. They run the checks after each change.
+6. Open Settings, then "Computer use", and turn off the switch named "Any App". With it on, Codex can take over your mouse and your screen while it checks its work. If you do not see that setting, skip this step.
 
 ## 4. Set up how Codex talks to you
 
@@ -58,7 +59,7 @@ Paste each of these two texts once.
 
 For Codex: open Codex's Settings, go to Personalization, and paste this into your personal instructions:
 
-> When I ask you to change one of my apps or websites, I mean: make the change and make it live at the usual address. Follow the project's own instructions for checks and publishing. Do any testing yourself. When the change is live, tell me in plain words what changed, the version I should see, and where to look. If you need me to approve something or decide something, tell me exactly what to do. If I say "what do you think?" or "show me an idea", only talk.
+> When I ask you to change one of my apps or websites, I mean: make the change and make it live at the usual address. Follow the project's own instructions for checks and publishing. Do any testing yourself, in the background: never take over my mouse, my keyboard or my own browser, because I use the computer while you work. When the change is live, tell me in plain words what changed, the version I should see, and where to look. If you need me to approve something or decide something, tell me exactly what to do. If I say "what do you think?" or "show me an idea", only talk.
 
 For ChatGPT: in ChatGPT's settings, look for custom instructions, and paste this:
 
@@ -104,10 +105,12 @@ The app shows its version at the top of every screen, such as 2026.11.13.1542. I
 - Say what you see and what you want: "On the unit screen, the weapon table is too wide on my phone. Make it fit."
 - Say which version you are on.
 - "What do you think?" gets an answer and no change.
-- When you finish one thing and start another, say "wrap up", then start a new thread in Codex. A long thread uses up your plan faster. The new thread reads the note the last one left. To skip the list and only leave the note, say "hand off".
+- When you finish one thing and start another, say "wrap up", then start a new thread in Codex. A long thread uses up your plan faster.
+- A wrap-up ends with a numbered list of what is still open, such as #4 and #7. The list is saved on your PC, and every new thread reads it. In the new thread say "continue" for the first point, or name a number: "do 7". A point keeps its number until it is done. "Drop 4" removes a point. To save the list without the wrap-up, say "hand off".
 
 ## If something goes wrong
 
 - If Codex shows an error, ask it to fix the error.
 - If Codex says to ask the person who helps with the project, send Matias its last message.
 - If Codex says you reached a usage limit, wait and try again later.
+- If Codex takes over your mouse or your browser while you do something else: do step 6 of "Open it in Codex" above, and tell Codex once "your checks get in my way, stop using the browser". It saves that for every later thread.

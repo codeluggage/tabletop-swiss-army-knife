@@ -189,16 +189,34 @@ The person you work for plays tabletop games and is not a developer. They write 
 3. Run `git revert --no-edit <commit>` on those commits, newest first. Skip a commit whose message starts with "Merge", and never revert it. Skip a commit named `publish again` the same way: it is empty, and `git revert` stops on it. Then follow "Make a change live" from step 4.
 4. Leave `upgrades` in `src/tabletop/storage.gleam` as it is, even when the change you undo added a store. Remove the screens and keep the store. A phone that already has the store cannot open an app that has fewer.
 
+#### Check your work in the background
+
+The person often uses the computer while you work, for example to play a game on another screen. Your checks must not touch what they are doing. This is how step 4 of the verification ladder in section 0 is done in this project.
+
+- Check with commands first: `gleam check`, `gleam test` and `gleam run -m tabletop/build`. Most changes need no more.
+- Look at a page only when a command cannot tell you what you need. Then use your own built-in browser, the one inside your app (`@Browser` in Codex): serve the app with `gleam run -m tabletop/serve` in the background and open its address there.
+- Never use a tool that moves the mouse, types on the keyboard or controls other apps, such as Computer Use (`@Computer`). On Windows it takes over the mouse and the screen the person is using.
+- Never open or drive the person's own browser, and never bring a window to the front. Do not run a command that opens a browser or an app, such as `start`, `Start-Process`, `explorer`, `open` or `xdg-open`.
+- When you cannot look without one of these, do not look. Say in one sentence what you did not see, and where in the app the person can check it.
+- When the person says your checks got in their way, stop looking at pages. Write it under "What the person decided" in `handoff.md`, so every later thread checks with commands only.
+
 #### Wrap up and hand off
 
 Each reply in a thread sends the whole thread to the model again. So a long thread uses up the person's plan faster than a new thread that starts from a short note.
 
-- "Wrap up" or "let's stop": use the `wrap-up` skill in `.agents/skills/wrap-up/`. It lists what was left unsaid, then writes `handoff.md`.
-- "Hand off" or "new thread": use the `handoff` skill in `.agents/skills/handoff/`. It only writes `handoff.md`.
+`handoff.md` is the list this project keeps between threads: the open points, each with a number such as `#4` that never changes, in the order to do them. Git ignores it.
+
+- "Wrap up" or "let's stop": use the `wrap-up` skill in `.agents/skills/wrap-up/`. It lists what was left unsaid as numbered points, then brings `handoff.md` up to date.
+- "Hand off" or "new thread": use the `handoff` skill in `.agents/skills/handoff/`. It only brings `handoff.md` up to date.
 
 After the third change in one thread, end your reply with one sentence that offers a wrap-up and a new thread.
 
-At the start of a thread, if `handoff.md` exists, read it before you act. It can be old: run `gleam run -m tabletop/versions` and compare the newest version with the one in the handoff. What the person asks now comes before anything in the handoff.
+At the start of a thread, if `handoff.md` exists, read it before you act.
+
+- It can be old: run `gleam run -m tabletop/versions` and compare the newest version with the one in the file.
+- What the person asks now comes before anything in the file.
+- A number from the person, such as "do 4" or "#4", means that point in the file. "Continue" or "next" means the first point under "Open".
+- When a point from the file is done and live, move it to "Done" in the file with its version, in the same reply. Do not wait for a wrap-up.
 
 #### Always
 
@@ -227,7 +245,7 @@ The build stamps a version, the minute of the build on the London clock such as 
 ### Layout
 
 - `src/tabletop.gleam` - the shell: flags, the version line at the top of every screen and the update bar, the service worker, opening storage, the route and scroll, the chosen file and which feature gets it by its kind (a zip, a backup file, other text), the home screen's frame and "About this device", and the wiring of each feature, the list screens' links into game data and their cards included, the cards on the data set and node screens, the list names for a new game and the way back to a game on a list's screen, and every feature reading its stores again after a restore.
-- `src/tabletop/lists.gleam` - the list feature: its state, messages and effects, importing and deleting lists, and the saved lists, list, unit and rule screens.
+- `src/tabletop/lists.gleam` - the list feature: its state, messages and effects, importing and deleting lists, a new list typed on this device (units with a name and points, an optional rule with its text, and the total), and the saved lists, list, unit and rule screens.
 - `src/tabletop/data.gleam` - the game data feature: its state, messages and effects, importing a zip one file at a time, building an older index again, opening a catalogue's scope, deleting a data set, the data set, catalogue and node screens with a place for the cards, and the links from a list into the data.
 - `src/tabletop/cards.gleam` - the cards feature: its state, messages and effects, the card form, importing cards from a table file, deleting a card, which cards show for a place, a list and a unit, and the card screens and sections.
 - `src/tabletop/tracker.gleam` - the game tracker: its state, messages and effects, every change saved at once, the "Games" section of the home screen, the score sheets and sheet screens with removing that asks first, the new game screen, the game screen with its round bar and an ended game read-only until Edit, and all games with deleting that asks first.
@@ -259,6 +277,8 @@ The build stamps a version, the minute of the build on the London clock such as 
 - `test/tabletop/zip_writer.gleam` + `zip_writer_ffi.mjs` - writes the zips the tests read. `data_set_test.gleam` goes from a zip to pages on `test/fixtures/data/`, and on `local-data/` when it is there.
 - `dist/` - build output, ignored by git.
 - `.agents/skills/` - Codex skills: `wrap-up` and `handoff`.
+- `handoff.md` - the numbered list of open points between threads, written by those two skills and read at the start of every thread. Ignored by git.
+- `.gitattributes` - every text file has LF line ends on every system, and the files in `test/fixtures/` are kept byte for byte.
 - `.codex/hooks.json` + `hooks/` - Codex hooks: `gleam check` after each edit, and check, test and format before the agent finishes. Each hook has a `.sh` for macOS and Linux and a `.ps1` for Windows.
 - `START-HERE.md` - the person's guide to changing the app with Codex on Windows.
 - `LICENSE` - the GNU General Public License, version 3. The app is under version 3 or later.
